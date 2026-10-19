@@ -23,9 +23,13 @@ function buildRTCConfig(): RTCConfiguration {
     { urls: STUN_SERVERS },
   ];
 
-  const turnUrls = process.env.NEXT_PUBLIC_TURN_URLS;
-  const turnUsername = process.env.NEXT_PUBLIC_TURN_USERNAME;
-  const turnCredential = process.env.NEXT_PUBLIC_TURN_CREDENTIAL;
+  const turnUrls =
+    process.env.NEXT_PUBLIC_TURN_URLS ||
+    'turn:relay.metered.ca:80,turn:relay.metered.ca:443,turn:relay.metered.ca:443?transport=tcp,turns:relay.metered.ca:443';
+  const turnUsername =
+    process.env.NEXT_PUBLIC_TURN_USERNAME || 'a9ee189d84a04e1b2c813ca6';
+  const turnCredential =
+    process.env.NEXT_PUBLIC_TURN_CREDENTIAL || 'Bbll4Y7gBPJXGMfC';
 
   if (turnUrls && turnUsername && turnCredential) {
     const urls = turnUrls.split(',').map((u) => u.trim()).filter(Boolean);

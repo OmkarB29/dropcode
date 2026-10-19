@@ -20,10 +20,12 @@ interface UseWebRTCOptions {
 export function useWebRTC(options: UseWebRTCOptions = {}) {
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
+  const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>('new');
   const [isChannelOpen, setIsChannelOpen] = useState(false);
 
   const cleanup = useCallback(() => {
+    pendingCandidatesRef.current = [];
     if (dataChannelRef.current) {
       try {
         dataChannelRef.current.close();
@@ -155,12 +157,31 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
               sdp: answer,
             });
           }
+          // Drain any early ICE candidates that arrived before the offer
+          if (pendingCandidatesRef.current.length > 0) {
+            for (const cand of pendingCandidatesRef.current) {
+              await addIceCandidate(pc, cand);
+            }
+            pendingCandidatesRef.current = [];
+          }
         } else if (signal.type === 'answer') {
           const sdp = signal.sdp || signal;
           await handleAnswer(pc, sdp);
+          // Drain any early ICE candidates that arrived before the answer
+          if (pendingCandidatesRef.current.length > 0) {
+            for (const cand of pendingCandidatesRef.current) {
+              await addIceCandidate(pc, cand);
+            }
+            pendingCandidatesRef.current = [];
+          }
         } else if (signal.type === 'candidate' || signal.candidate) {
           const cand = signal.candidate || signal;
-          await addIceCandidate(pc, cand);
+          if (!pc.remoteDescription || !pc.remoteDescription.type) {
+            // Remote description not ready yet, queue the candidate
+            pendingCandidatesRef.current.push(cand);
+          } else {
+            await addIceCandidate(pc, cand);
+          }
         }
       } catch (err) {
         console.error('Error handling WebRTC remote signal:', err);
