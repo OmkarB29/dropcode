@@ -9,7 +9,7 @@ import {
 } from '@/types/transfer';
 import { getSocket, disconnectSocket } from '@/lib/socket';
 import { useWebRTC } from './useWebRTC';
-import { sendFiles, createManifest } from '@/lib/fileTransfer';
+import { sendFiles, sendFilesViaSocket, createManifest } from '@/lib/fileTransfer';
 import { MAX_FILES_PER_SESSION, MAX_TOTAL_SIZE_BYTES } from '@/lib/constants';
 
 const INITIAL_STATE: SenderState = {
@@ -27,9 +27,51 @@ export function useSenderFlow() {
   const [senderState, setSenderState] = useState<SenderState>(INITIAL_STATE);
   const isCancelledRef = useRef<boolean>(false);
   const activeSessionIdRef = useRef<string | null>(null);
+  const transferStartedRef = useRef<boolean>(false);
+  const fallbackTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const filesRef = useRef<File[]>([]);
 
-  // Sync ref
+  // Sync refs
   activeSessionIdRef.current = senderState.sessionId;
+  filesRef.current = senderState.files;
+
+  const startRelayTransfer = useCallback(async () => {
+    if (transferStartedRef.current) return;
+    transferStartedRef.current = true;
+    if (fallbackTimerRef.current) {
+      clearTimeout(fallbackTimerRef.current);
+      fallbackTimerRef.current = null;
+    }
+
+    const sessId = activeSessionIdRef.current;
+    const currentFiles = filesRef.current;
+    if (!sessId || currentFiles.length === 0) return;
+
+    console.log('[DropCode] WebRTC unavailable or slow on Wi-Fi. Streaming via WebSocket Relay (PairDrop style)...');
+    setSenderState((prev) => ({ ...prev, state: 'TRANSFERRING' }));
+
+    try {
+      await sendFilesViaSocket(
+        getSocket(),
+        sessId,
+        currentFiles,
+        (prog: TransferProgress) => {
+          setSenderState((prev) => ({ ...prev, progress: prog }));
+        },
+        () => isCancelledRef.current
+      );
+      setSenderState((prev) => ({ ...prev, state: 'COMPLETED' }));
+    } catch (err: any) {
+      if (!isCancelledRef.current) {
+        console.error('WebSocket relay transfer failed:', err);
+        setSenderState((prev) => ({
+          ...prev,
+          state: 'FAILED',
+          error: err?.message || 'WebSocket relay transfer failed',
+        }));
+      }
+    }
+  }, []);
 
   // WebRTC hooks
   const {
@@ -39,11 +81,18 @@ export function useSenderFlow() {
     dataChannelRef,
   } = useWebRTC({
     onDataChannelOpen: async (channel) => {
+      if (fallbackTimerRef.current) {
+        clearTimeout(fallbackTimerRef.current);
+        fallbackTimerRef.current = null;
+      }
+      if (transferStartedRef.current) return;
+      transferStartedRef.current = true;
+
       setSenderState((prev) => ({ ...prev, state: 'TRANSFERRING' }));
       try {
         await sendFiles(
           channel,
-          senderState.files,
+          filesRef.current,
           (prog: TransferProgress) => {
             setSenderState((prev) => ({ ...prev, progress: prog }));
           },
@@ -63,7 +112,7 @@ export function useSenderFlow() {
     },
     onDataChannelClose: () => {
       setSenderState((prev) => {
-        if (prev.state === 'TRANSFERRING') {
+        if (prev.state === 'TRANSFERRING' && !transferStartedRef.current) {
           return {
             ...prev,
             state: 'FAILED',
@@ -75,14 +124,49 @@ export function useSenderFlow() {
     },
     onConnectionStateChange: (connState) => {
       if (connState === 'failed') {
-        setSenderState((prev) => ({
-          ...prev,
-          state: 'FAILED',
-          error: 'P2P WebRTC connection failed. Your Wi-Fi router might be blocking peer-to-peer traffic (AP isolation).',
-        }));
+        if (!transferStartedRef.current) {
+          console.warn('[DropCode] WebRTC connection failed on Wi-Fi. Switching to WebSocket Relay...');
+          startRelayTransfer();
+        }
       }
     },
   });
+
+  const initiateTransfer = useCallback(async () => {
+    transferStartedRef.current = false;
+    setSenderState((prev) => ({ ...prev, state: 'CONNECTING' }));
+
+    if (fallbackTimerRef.current) {
+      clearTimeout(fallbackTimerRef.current);
+      fallbackTimerRef.current = null;
+    }
+
+    // 3.5s timeout: if WebRTC DataChannel doesn't open within 3.5s, fall back to WebSocket Relay (PairDrop mode)
+    fallbackTimerRef.current = setTimeout(() => {
+      if (!transferStartedRef.current) {
+        console.log('[DropCode] WebRTC DataChannel did not open within 3.5s. Falling back to WebSocket Relay...');
+        startRelayTransfer();
+      }
+    }, 3500);
+
+    try {
+      await setupSender((signal: WebRTCSignal) => {
+        const currentSocket = getSocket();
+        const sessId = activeSessionIdRef.current;
+        currentSocket.emit('sender:webrtc-signal', {
+          sessionId: sessId,
+          signal,
+        });
+        currentSocket.emit('webrtc:signal', {
+          sessionId: sessId,
+          signal,
+        });
+      });
+    } catch (err: any) {
+      console.warn('Failed to setup WebRTC sender, immediately using relay fallback:', err);
+      startRelayTransfer();
+    }
+  }, [setupSender, startRelayTransfer]);
 
   // Socket setup and listeners
   useEffect(() => {
@@ -114,29 +198,8 @@ export function useSenderFlow() {
       }));
     };
 
-    const onTransferApproved = async () => {
-      setSenderState((prev) => ({ ...prev, state: 'CONNECTING' }));
-      try {
-        await setupSender((signal: WebRTCSignal) => {
-          const currentSocket = getSocket();
-          const sessId = activeSessionIdRef.current;
-          currentSocket.emit('sender:webrtc-signal', {
-            sessionId: sessId,
-            signal,
-          });
-          currentSocket.emit('webrtc:signal', {
-            sessionId: sessId,
-            signal,
-          });
-        });
-      } catch (err: any) {
-        console.error('Failed to initiate WebRTC sender offer:', err);
-        setSenderState((prev) => ({
-          ...prev,
-          state: 'FAILED',
-          error: 'Failed to initiate WebRTC connection',
-        }));
-      }
+    const onTransferApproved = () => {
+      initiateTransfer();
     };
 
     const onReceiverSignal = (data: { signal: WebRTCSignal }) => {
@@ -319,23 +382,8 @@ export function useSenderFlow() {
     socket.emit('sender:approve-receiver', {
       sessionId: activeSessionIdRef.current,
     });
-    setSenderState((prev) => ({ ...prev, state: 'CONNECTING' }));
-
-    // Start WebRTC connection immediately
-    setupSender((signal: WebRTCSignal) => {
-      const currentSocket = getSocket();
-      currentSocket.emit('sender:webrtc-signal', {
-        sessionId: activeSessionIdRef.current,
-        signal,
-      });
-      currentSocket.emit('webrtc:signal', {
-        sessionId: activeSessionIdRef.current,
-        signal,
-      });
-    }).catch((err) => {
-      console.error('Failed to setup sender WebRTC:', err);
-    });
-  }, [setupSender]);
+    initiateTransfer();
+  }, [initiateTransfer]);
 
   const rejectReceiver = useCallback(() => {
     const socket = getSocket();
@@ -351,6 +399,11 @@ export function useSenderFlow() {
 
   const cancelTransfer = useCallback(() => {
     isCancelledRef.current = true;
+    transferStartedRef.current = false;
+    if (fallbackTimerRef.current) {
+      clearTimeout(fallbackTimerRef.current);
+      fallbackTimerRef.current = null;
+    }
     const socket = getSocket();
     socket.emit('sender:cancel', {
       sessionId: activeSessionIdRef.current,
@@ -365,6 +418,11 @@ export function useSenderFlow() {
 
   const reset = useCallback(() => {
     isCancelledRef.current = false;
+    transferStartedRef.current = false;
+    if (fallbackTimerRef.current) {
+      clearTimeout(fallbackTimerRef.current);
+      fallbackTimerRef.current = null;
+    }
     cleanupWebRTC();
     disconnectSocket();
     setSenderState(INITIAL_STATE);

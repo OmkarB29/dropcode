@@ -34,6 +34,7 @@ export function setupSocketIO(server: HttpServer | FastifyInstance['server']): S
     },
     pingTimeout: 20000,
     pingInterval: 25000,
+    maxHttpBufferSize: 1e8, // 100 MB buffer for binary file chunks
   });
 
   // Wire up session store lifecycle events to emit socket notifications

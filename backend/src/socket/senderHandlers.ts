@@ -239,4 +239,51 @@ export function registerSenderHandlers(io: Server, socket: Socket): void {
       callback({ success: result.success });
     }
   });
+
+  /**
+   * WebSocket Relay file transfer handlers (PairDrop-style fallback)
+   */
+  socket.on('relay:start', (data: { sessionId: string; manifest: any }) => {
+    if (!data?.sessionId) return;
+    const session = sessionStore.getById(data.sessionId);
+    if (!session || !session.receiverSocketId) return;
+    sessionManager.updateTransferState(data.sessionId, 'TRANSFERRING');
+    io.to(session.receiverSocketId).emit('relay:start', data.manifest);
+  });
+
+  socket.on('relay:file-start', (data: { sessionId: string; fileInfo: any }) => {
+    if (!data?.sessionId) return;
+    const session = sessionStore.getById(data.sessionId);
+    if (!session || !session.receiverSocketId) return;
+    io.to(session.receiverSocketId).emit('relay:file-start', data.fileInfo);
+  });
+
+  socket.on('relay:chunk', (data: { sessionId: string; chunk: any }, ack?: (res?: any) => void) => {
+    if (!data?.sessionId) {
+      if (typeof ack === 'function') ack({ success: false, error: 'No sessionId' });
+      return;
+    }
+    const session = sessionStore.getById(data.sessionId);
+    if (!session || !session.receiverSocketId) {
+      if (typeof ack === 'function') ack({ success: false, error: 'Receiver not connected' });
+      return;
+    }
+    io.to(session.receiverSocketId).emit('relay:chunk', data.chunk);
+    if (typeof ack === 'function') ack({ success: true });
+  });
+
+  socket.on('relay:file-end', (data: { sessionId: string; fileId: string }) => {
+    if (!data?.sessionId) return;
+    const session = sessionStore.getById(data.sessionId);
+    if (!session || !session.receiverSocketId) return;
+    io.to(session.receiverSocketId).emit('relay:file-end', { fileId: data.fileId });
+  });
+
+  socket.on('relay:complete', (data: { sessionId: string }) => {
+    if (!data?.sessionId) return;
+    const session = sessionStore.getById(data.sessionId);
+    if (!session || !session.receiverSocketId) return;
+    sessionManager.completeTransfer(data.sessionId);
+    io.to(session.receiverSocketId).emit('relay:complete');
+  });
 }

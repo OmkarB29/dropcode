@@ -10,7 +10,7 @@ import {
 } from '@/types/transfer';
 import { getSocket, disconnectSocket } from '@/lib/socket';
 import { useWebRTC } from './useWebRTC';
-import { receiveFiles } from '@/lib/fileTransfer';
+import { receiveFiles, receiveFilesViaSocket } from '@/lib/fileTransfer';
 import { formatCode } from '@/lib/formatters';
 
 const INITIAL_STATE: ReceiverState = {
@@ -32,6 +32,7 @@ export function useReceiverFlow(initialCode: string = '') {
 
   const activeSessionIdRef = useRef<string | null>(null);
   activeSessionIdRef.current = receiverState.sessionId;
+  const transferStartedRef = useRef<boolean>(false);
 
   // WebRTC hooks
   const {
@@ -41,6 +42,8 @@ export function useReceiverFlow(initialCode: string = '') {
     cleanup: cleanupWebRTC,
   } = useWebRTC({
     onDataChannelOpen: (channel) => {
+      if (transferStartedRef.current) return;
+      transferStartedRef.current = true;
       setReceiverState((prev) => ({ ...prev, state: 'TRANSFERRING' }));
 
       // Attach file reception listener
@@ -92,11 +95,9 @@ export function useReceiverFlow(initialCode: string = '') {
     },
     onConnectionStateChange: (connState) => {
       if (connState === 'failed') {
-        setReceiverState((prev) => ({
-          ...prev,
-          state: 'FAILED',
-          error: 'P2P WebRTC connection failed. Your Wi-Fi router might be blocking peer-to-peer traffic (AP isolation).',
-        }));
+        if (!transferStartedRef.current) {
+          console.warn('[DropCode] WebRTC P2P failed on Wi-Fi router. Awaiting PairDrop-style WebSocket Relay...');
+        }
       }
     },
   });
@@ -196,6 +197,47 @@ export function useReceiverFlow(initialCode: string = '') {
       }));
     };
 
+    // Register WebSocket Relay fallback listener (PairDrop style)
+    const cleanupRelay = receiveFilesViaSocket(socket, {
+      onManifest: (manifest) => {
+        transferStartedRef.current = true;
+        setReceiverState((prev) => ({
+          ...prev,
+          state: 'TRANSFERRING',
+          files: manifest,
+          error: null,
+        }));
+      },
+      onProgress: (prog) => {
+        setReceiverState((prev) => ({
+          ...prev,
+          state: 'TRANSFERRING',
+          progress: prog,
+        }));
+      },
+      onFileComplete: (file: DownloadedFile) => {
+        setReceiverState((prev) => ({
+          ...prev,
+          downloadedFiles: [...prev.downloadedFiles, file],
+        }));
+      },
+      onTransferComplete: () => {
+        setReceiverState((prev) => ({
+          ...prev,
+          state: 'COMPLETED',
+        }));
+        cleanupWebRTC();
+      },
+      onError: (err) => {
+        if (!transferStartedRef.current) return;
+        setReceiverState((prev) => ({
+          ...prev,
+          state: 'FAILED',
+          error: err,
+        }));
+      },
+    });
+
     socket.on('session:joined', onSessionJoined);
     socket.on('transfer:approved', onTransferApproved);
     socket.on('sender:webrtc-signal', onSenderSignal);
@@ -207,6 +249,7 @@ export function useReceiverFlow(initialCode: string = '') {
     socket.on('connect_error', onConnectError);
 
     return () => {
+      cleanupRelay();
       socket.off('session:joined', onSessionJoined);
       socket.off('transfer:approved', onTransferApproved);
       socket.off('sender:webrtc-signal', onSenderSignal);
@@ -324,6 +367,7 @@ export function useReceiverFlow(initialCode: string = '') {
   }, [setupReceiver]);
 
   const rejectTransfer = useCallback(() => {
+    transferStartedRef.current = false;
     const socket = getSocket();
     socket.emit('receiver:reject', {
       sessionId: activeSessionIdRef.current,
@@ -337,6 +381,7 @@ export function useReceiverFlow(initialCode: string = '') {
   }, [cleanupWebRTC]);
 
   const reset = useCallback(() => {
+    transferStartedRef.current = false;
     cleanupWebRTC();
     disconnectSocket();
     setReceiverState(INITIAL_STATE);
