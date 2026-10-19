@@ -10,17 +10,81 @@ const inter = Inter({
   variable: '--font-inter',
 });
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://dropcode.vercel.app';
+
 export const metadata: Metadata = {
-  title: 'DropCode | Direct P2P WebRTC File Sharing',
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: 'DropCode — Fast, Direct P2P File Sharing Online',
+    template: '%s | DropCode',
+  },
   description:
-    'Share files between any device instantly with a simple 8-character code. Direct WebRTC peer-to-peer data channels with zero cloud storage.',
+    'Share files instantly between any device using a short 8-character transfer code. Direct peer-to-peer WebRTC transfer with zero cloud storage, no account needed, and no file size limits.',
   keywords: [
     'file sharing',
     'p2p file transfer',
-    'webrtc',
+    'webrtc file share',
     'dropcode',
-    'peer to peer',
-    'encrypted transfer',
+    'share files online',
+    'transfer files between devices',
+    'airdrop alternative',
+    'localsend alternative',
+    'cross platform file transfer',
+    'secure file transfer without cloud',
+  ],
+  authors: [{ name: 'DropCode' }],
+  creator: 'DropCode',
+  publisher: 'DropCode',
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
+  openGraph: {
+    type: 'website',
+    locale: 'en_US',
+    url: siteUrl,
+    title: 'DropCode — Fast, Direct P2P File Sharing Online',
+    description:
+      'Transfer files directly between devices using a short code. No cloud storage, no signup required.',
+    siteName: 'DropCode',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'DropCode — Fast, Direct P2P File Sharing Online',
+    description:
+      'Transfer files directly between devices using a short code. No cloud storage, no signup required.',
+  },
+  alternates: {
+    canonical: '/',
+  },
+};
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebApplication',
+  name: 'DropCode',
+  applicationCategory: 'UtilityApplication',
+  operatingSystem: 'All',
+  description:
+    'Direct peer-to-peer WebRTC file transfer between any devices with a short sharing code. Zero cloud storage.',
+  offers: {
+    '@type': 'Offer',
+    price: '0',
+    priceCurrency: 'USD',
+  },
+  featureList: [
+    'Direct WebRTC Peer-to-Peer file transfer',
+    'No file upload to cloud servers',
+    'No account required',
+    'End-to-end encrypted in transit',
+    'Cross-device support across mobile and desktop',
   ],
 };
 
@@ -31,6 +95,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`dark ${inter.variable}`}>
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      </head>
       <body className="bg-navy-900 text-slate-100 flex flex-col min-h-screen antialiased selection:bg-brand-violet selection:text-white">
         <Header />
         <main className="flex-1 flex flex-col">{children}</main>
