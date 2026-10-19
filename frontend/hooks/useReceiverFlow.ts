@@ -89,6 +89,15 @@ export function useReceiverFlow(initialCode: string = '') {
         return prev;
       });
     },
+    onConnectionStateChange: (connState) => {
+      if (connState === 'failed') {
+        setReceiverState((prev) => ({
+          ...prev,
+          state: 'FAILED',
+          error: 'P2P WebRTC connection failed. Your Wi-Fi router might be blocking peer-to-peer traffic (AP isolation).',
+        }));
+      }
+    },
   });
 
   // Socket setup and listeners

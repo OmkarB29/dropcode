@@ -19,35 +19,37 @@ export const STUN_SERVERS = [
  * Falls back to STUN-only if no TURN vars are set.
  */
 function buildRTCConfig(): RTCConfiguration {
-  const iceServers: RTCIceServer[] = [
-    { urls: STUN_SERVERS },
-  ];
-
-  const turnUrls =
-    process.env.NEXT_PUBLIC_TURN_URLS ||
-    'turn:relay.metered.ca:80,turn:relay.metered.ca:443,turn:relay.metered.ca:443?transport=tcp,turns:relay.metered.ca:443';
   const turnUsername =
     process.env.NEXT_PUBLIC_TURN_USERNAME || 'a9ee189d84a04e1b2c813ca6';
   const turnCredential =
     process.env.NEXT_PUBLIC_TURN_CREDENTIAL || 'Bbll4Y7gBPJXGMfC';
 
-  if (turnUrls && turnUsername && turnCredential) {
-    const urls = turnUrls.split(',').map((u) => u.trim()).filter(Boolean);
-    if (urls.length > 0) {
-      iceServers.push({
-        urls,
+  return {
+    iceServers: [
+      {
+        urls: [
+          'stun:stun.l.google.com:19302',
+          'stun:stun1.l.google.com:19302',
+          'stun:relay.metered.ca:80',
+        ],
+      },
+      {
+        urls: 'turn:relay.metered.ca:80',
         username: turnUsername,
         credential: turnCredential,
-      });
-    }
-  }
-
-  return {
-    iceServers,
-    // Prefer relay when TURN is available to maximise connectivity
-    iceTransportPolicy: turnUrls ? 'all' : 'all',
-    bundlePolicy: 'max-bundle',
-    rtcpMuxPolicy: 'require',
+      },
+      {
+        urls: 'turn:relay.metered.ca:443',
+        username: turnUsername,
+        credential: turnCredential,
+      },
+      {
+        urls: 'turn:relay.metered.ca:443?transport=tcp',
+        username: turnUsername,
+        credential: turnCredential,
+      },
+    ],
+    iceCandidatePoolSize: 10,
   };
 }
 
