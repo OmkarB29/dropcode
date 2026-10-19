@@ -62,5 +62,5 @@ export const getSiteUrl = (): string => {
   if (typeof window !== 'undefined' && window.location?.origin) {
     return window.location.origin;
   }
-  return 'https://dropcode-omkarb29s-projects.vercel.app';
+  return 'https://dropcode-three.vercel.app';
 };
