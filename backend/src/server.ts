@@ -35,16 +35,15 @@ export function buildApp(): AppInstance {
       if (!origin) {
         return cb(null, true);
       }
-      if (origin === config.frontendUrl) {
-        return cb(null, true);
-      }
+      const cleanOrigin = origin.replace(/\/+$/, '');
       if (
-        config.nodeEnv === 'development' &&
-        /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
+        config.allowedFrontendUrls.includes(cleanOrigin) ||
+        cleanOrigin.endsWith('.vercel.app') ||
+        (config.nodeEnv === 'development' && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(cleanOrigin))
       ) {
         return cb(null, true);
       }
-      cb(new Error('Not allowed by CORS'), false);
+      cb(new Error(`Not allowed by CORS: ${origin}`), false);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],

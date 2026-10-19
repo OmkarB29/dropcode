@@ -161,6 +161,14 @@ export function useSenderFlow() {
       }));
     };
 
+    const onConnectError = (err: any) => {
+      setSenderState((prev) => ({
+        ...prev,
+        state: 'FAILED',
+        error: `Cannot connect to backend server (${err?.message || 'Connection refused'}). Make sure the backend service is running and awake.`,
+      }));
+    };
+
     socket.on('session:created', onSessionCreated);
     socket.on('session:receiver-joined', onReceiverJoined);
     socket.on('transfer:approved', onTransferApproved);
@@ -170,6 +178,7 @@ export function useSenderFlow() {
     socket.on('transfer:cancelled', onTransferCancelled);
     socket.on('receiver:disconnected', onTransferCancelled);
     socket.on('error', onError);
+    socket.on('connect_error', onConnectError);
 
     return () => {
       socket.off('session:created', onSessionCreated);
@@ -181,6 +190,7 @@ export function useSenderFlow() {
       socket.off('transfer:cancelled', onTransferCancelled);
       socket.off('receiver:disconnected', onTransferCancelled);
       socket.off('error', onError);
+      socket.off('connect_error', onConnectError);
     };
   }, [cleanupWebRTC, handleRemoteSignal, setupSender]);
 

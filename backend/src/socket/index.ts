@@ -18,12 +18,12 @@ export function setupSocketIO(server: HttpServer | FastifyInstance['server']): S
           return callback(null, true);
         }
 
-        if (allowedOrigins.includes(origin)) {
-          return callback(null, true);
-        }
-
-        // In development, permit localhost on any port
-        if (config.nodeEnv === 'development' && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+        const cleanOrigin = origin.replace(/\/+$/, '');
+        if (
+          config.allowedFrontendUrls.includes(cleanOrigin) ||
+          cleanOrigin.endsWith('.vercel.app') ||
+          (config.nodeEnv === 'development' && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(cleanOrigin))
+        ) {
           return callback(null, true);
         }
 

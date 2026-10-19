@@ -168,6 +168,14 @@ export function useReceiverFlow(initialCode: string = '') {
       }));
     };
 
+    const onConnectError = (err: any) => {
+      setReceiverState((prev) => ({
+        ...prev,
+        state: 'FAILED',
+        error: `Cannot connect to backend server (${err?.message || 'Connection refused'}). Make sure the backend service is running and awake.`,
+      }));
+    };
+
     socket.on('session:joined', onSessionJoined);
     socket.on('transfer:approved', onTransferApproved);
     socket.on('sender:webrtc-signal', onSenderSignal);
@@ -176,6 +184,7 @@ export function useReceiverFlow(initialCode: string = '') {
     socket.on('transfer:cancelled', onTransferCancelled);
     socket.on('sender:disconnected', onTransferCancelled);
     socket.on('error', onError);
+    socket.on('connect_error', onConnectError);
 
     return () => {
       socket.off('session:joined', onSessionJoined);
@@ -186,6 +195,7 @@ export function useReceiverFlow(initialCode: string = '') {
       socket.off('transfer:cancelled', onTransferCancelled);
       socket.off('sender:disconnected', onTransferCancelled);
       socket.off('error', onError);
+      socket.off('connect_error', onConnectError);
     };
   }, [cleanupWebRTC, handleRemoteSignal, setupReceiver]);
 
@@ -217,6 +227,20 @@ export function useReceiverFlow(initialCode: string = '') {
         localStorage.getItem('dropcode_device_name')) ||
       'DropCode Receiver';
 
+    // 15-second safety timeout so it never hangs indefinitely
+    const timeoutId = setTimeout(() => {
+      setReceiverState((prev) => {
+        if (prev.state === 'CONNECTING') {
+          return {
+            ...prev,
+            state: 'FAILED',
+            error: 'Connection timed out. The backend server might still be waking up, or the sender disconnected.',
+          };
+        }
+        return prev;
+      });
+    }, 15000);
+
     // Send receiver:join
     socket.emit(
       'receiver:join',
@@ -231,6 +255,7 @@ export function useReceiverFlow(initialCode: string = '') {
         files?: FileManifestEntry[];
         error?: string;
       }) => {
+        clearTimeout(timeoutId);
         if (response && response.sessionId) {
           setReceiverState((prev) => ({
             ...prev,
