@@ -10,7 +10,11 @@ const inter = Inter({
   variable: '--font-inter',
 });
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://dropcode.vercel.app';
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : 'https://dropcode-omkarb29s-projects.vercel.app');
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
