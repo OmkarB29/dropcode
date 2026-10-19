@@ -35,6 +35,7 @@ export function useReceiverFlow(initialCode: string = '') {
 
   // WebRTC hooks
   const {
+    pcRef,
     setupReceiver,
     handleRemoteSignal,
     cleanup: cleanupWebRTC,
@@ -138,6 +139,16 @@ export function useReceiverFlow(initialCode: string = '') {
 
     const onSenderSignal = (data: { signal: WebRTCSignal }) => {
       const sig = data.signal || data;
+      // Auto-initialize receiver peer connection if an offer arrives before onTransferApproved
+      if (!pcRef.current) {
+        setupReceiver((signal: WebRTCSignal) => {
+          const currentSocket = getSocket();
+          currentSocket.emit('receiver:webrtc-signal', {
+            sessionId: activeSessionIdRef.current,
+            signal,
+          });
+        });
+      }
       handleRemoteSignal(sig, (replySignal) => {
         const currentSocket = getSocket();
         currentSocket.emit('receiver:webrtc-signal', {

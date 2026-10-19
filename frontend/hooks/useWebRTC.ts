@@ -21,11 +21,13 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  const earlySignalQueueRef = useRef<{ signal: any; sendSignal?: (sig: WebRTCSignal) => void }[]>([]);
   const [connectionState, setConnectionState] = useState<RTCPeerConnectionState>('new');
   const [isChannelOpen, setIsChannelOpen] = useState(false);
 
   const cleanup = useCallback(() => {
     pendingCandidatesRef.current = [];
+    earlySignalQueueRef.current = [];
     if (dataChannelRef.current) {
       try {
         dataChannelRef.current.close();
@@ -131,6 +133,16 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
       };
 
       pcRef.current = pc;
+
+      // Drain early signals that arrived before setupReceiver was called
+      if (earlySignalQueueRef.current.length > 0) {
+        const queued = [...earlySignalQueueRef.current];
+        earlySignalQueueRef.current = [];
+        for (const item of queued) {
+          handleRemoteSignal(item.signal, item.sendSignal || sendSignal);
+        }
+      }
+
       return pc;
     },
     [attachDataChannelEvents, cleanup, options]
@@ -143,7 +155,8 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     ) => {
       const pc = pcRef.current;
       if (!pc) {
-        console.warn('WebRTC signal received without active PeerConnection');
+        console.warn('WebRTC signal received before PeerConnection was active. Queuing signal.');
+        earlySignalQueueRef.current.push({ signal, sendSignal });
         return;
       }
 
