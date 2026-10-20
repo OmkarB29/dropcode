@@ -10,7 +10,7 @@ import {
 } from '@/types/transfer';
 import { getSocket, disconnectSocket } from '@/lib/socket';
 import { useWebRTC } from './useWebRTC';
-import { receiveFiles, receiveFilesViaSocket } from '@/lib/fileTransfer';
+import { receiveFiles, receiveFilesViaSocket, ReceiverCallbacks } from '@/lib/fileTransfer';
 import { formatCode } from '@/lib/formatters';
 
 const INITIAL_STATE: ReceiverState = {
@@ -34,56 +34,75 @@ export function useReceiverFlow(initialCode: string = '') {
   activeSessionIdRef.current = receiverState.sessionId;
   const transferStartedRef = useRef<boolean>(false);
 
-  // WebRTC hooks
+  // Stable callbacks container so WebRTC and Relay listeners never unmount/re-mount mid-transfer
+  const callbacksRef = useRef<ReceiverCallbacks>({});
+  callbacksRef.current = {
+    onManifest: (manifest) => {
+      transferStartedRef.current = true;
+      setReceiverState((prev) => ({
+        ...prev,
+        files: manifest,
+      }));
+    },
+    onProgress: (prog) => {
+      setReceiverState((prev) => ({
+        ...prev,
+        state: 'TRANSFERRING',
+        progress: prog,
+      }));
+    },
+    onFileComplete: (file: DownloadedFile) => {
+      setReceiverState((prev) => {
+        if (prev.downloadedFiles.some((f) => f.id === file.id)) {
+          return prev;
+        }
+        return {
+          ...prev,
+          downloadedFiles: [...prev.downloadedFiles, file],
+        };
+      });
+    },
+    onTransferComplete: () => {
+      setReceiverState((prev) => ({
+        ...prev,
+        state: 'COMPLETED',
+      }));
+      cleanupWebRTC();
+    },
+    onError: (err) => {
+      setReceiverState((prev) => ({
+        ...prev,
+        state: 'FAILED',
+        error: err,
+      }));
+    },
+  };
+
+  // WebRTC hooks with stable delegates
   const {
     pcRef,
     setupReceiver,
     handleRemoteSignal,
     cleanup: cleanupWebRTC,
+    fullReset,
   } = useWebRTC({
     onDataChannelOpen: (channel) => {
       if (transferStartedRef.current) return;
       transferStartedRef.current = true;
       setReceiverState((prev) => ({ ...prev, state: 'TRANSFERRING' }));
 
-      // Attach file reception listener
+      // Attach file reception listener to WebRTC DataChannel
       receiveFiles(channel, {
-        onManifest: (manifest) => {
-          setReceiverState((prev) => ({
-            ...prev,
-            files: manifest,
-          }));
-        },
-        onProgress: (prog) => {
-          setReceiverState((prev) => ({
-            ...prev,
-            progress: prog,
-          }));
-        },
-        onFileComplete: (file: DownloadedFile) => {
-          setReceiverState((prev) => ({
-            ...prev,
-            downloadedFiles: [...prev.downloadedFiles, file],
-          }));
-        },
-        onTransferComplete: () => {
-          setReceiverState((prev) => ({
-            ...prev,
-            state: 'COMPLETED',
-          }));
-        },
-        onError: (err) => {
-          setReceiverState((prev) => ({
-            ...prev,
-            state: 'FAILED',
-            error: err,
-          }));
-        },
+        onManifest: (m) => callbacksRef.current.onManifest?.(m),
+        onProgress: (p) => callbacksRef.current.onProgress?.(p),
+        onFileComplete: (f) => callbacksRef.current.onFileComplete?.(f),
+        onTransferComplete: () => callbacksRef.current.onTransferComplete?.(),
+        onError: (e) => callbacksRef.current.onError?.(e),
       });
     },
     onDataChannelClose: () => {
       setReceiverState((prev) => {
-        if (prev.state === 'TRANSFERRING') {
+        if (prev.state === 'TRANSFERRING' && prev.downloadedFiles.length === 0) {
           return {
             ...prev,
             state: 'FAILED',
@@ -102,7 +121,16 @@ export function useReceiverFlow(initialCode: string = '') {
     },
   });
 
-  // Socket setup and listeners
+  const setupReceiverRef = useRef(setupReceiver);
+  setupReceiverRef.current = setupReceiver;
+
+  const handleRemoteSignalRef = useRef(handleRemoteSignal);
+  handleRemoteSignalRef.current = handleRemoteSignal;
+
+  const cleanupWebRTCRef = useRef(cleanupWebRTC);
+  cleanupWebRTCRef.current = cleanupWebRTC;
+
+  // Socket setup and listeners - mounted ONCE to prevent dropped events or unmounting mid-stream
   useEffect(() => {
     const socket = getSocket();
 
@@ -124,8 +152,8 @@ export function useReceiverFlow(initialCode: string = '') {
 
     const onTransferApproved = () => {
       setReceiverState((prev) => ({ ...prev, state: 'CONNECTING' }));
-      // Set up peer connection to receive offer
-      setupReceiver((signal: WebRTCSignal) => {
+      // Set up peer connection to receive offer (if not already active)
+      setupReceiverRef.current((signal: WebRTCSignal) => {
         const currentSocket = getSocket();
         currentSocket.emit('receiver:webrtc-signal', {
           sessionId: activeSessionIdRef.current,
@@ -141,8 +169,8 @@ export function useReceiverFlow(initialCode: string = '') {
     const onSenderSignal = (data: { signal: WebRTCSignal }) => {
       const sig = data.signal || data;
       // Auto-initialize receiver peer connection if an offer arrives before onTransferApproved
-      if (!pcRef.current) {
-        setupReceiver((signal: WebRTCSignal) => {
+      if (!pcRef.current || pcRef.current.signalingState === 'closed') {
+        setupReceiverRef.current((signal: WebRTCSignal) => {
           const currentSocket = getSocket();
           currentSocket.emit('receiver:webrtc-signal', {
             sessionId: activeSessionIdRef.current,
@@ -150,7 +178,7 @@ export function useReceiverFlow(initialCode: string = '') {
           });
         });
       }
-      handleRemoteSignal(sig, (replySignal) => {
+      handleRemoteSignalRef.current(sig, (replySignal) => {
         const currentSocket = getSocket();
         currentSocket.emit('receiver:webrtc-signal', {
           sessionId: activeSessionIdRef.current,
@@ -169,7 +197,7 @@ export function useReceiverFlow(initialCode: string = '') {
         state: 'EXPIRED',
         error: 'This transfer session has expired',
       }));
-      cleanupWebRTC();
+      cleanupWebRTCRef.current();
     };
 
     const onTransferCancelled = (data?: { reason?: string }) => {
@@ -178,7 +206,7 @@ export function useReceiverFlow(initialCode: string = '') {
         state: 'CANCELLED',
         error: data?.reason || 'Sender cancelled the transfer',
       }));
-      cleanupWebRTC();
+      cleanupWebRTCRef.current();
     };
 
     const onError = (data: { message?: string }) => {
@@ -197,45 +225,13 @@ export function useReceiverFlow(initialCode: string = '') {
       }));
     };
 
-    // Register WebSocket Relay fallback listener (PairDrop style)
+    // Register WebSocket Relay listener (PairDrop style) with stable forwarders
     const cleanupRelay = receiveFilesViaSocket(socket, {
-      onManifest: (manifest) => {
-        transferStartedRef.current = true;
-        setReceiverState((prev) => ({
-          ...prev,
-          state: 'TRANSFERRING',
-          files: manifest,
-          error: null,
-        }));
-      },
-      onProgress: (prog) => {
-        setReceiverState((prev) => ({
-          ...prev,
-          state: 'TRANSFERRING',
-          progress: prog,
-        }));
-      },
-      onFileComplete: (file: DownloadedFile) => {
-        setReceiverState((prev) => ({
-          ...prev,
-          downloadedFiles: [...prev.downloadedFiles, file],
-        }));
-      },
-      onTransferComplete: () => {
-        setReceiverState((prev) => ({
-          ...prev,
-          state: 'COMPLETED',
-        }));
-        cleanupWebRTC();
-      },
-      onError: (err) => {
-        if (!transferStartedRef.current) return;
-        setReceiverState((prev) => ({
-          ...prev,
-          state: 'FAILED',
-          error: err,
-        }));
-      },
+      onManifest: (m) => callbacksRef.current.onManifest?.(m),
+      onProgress: (p) => callbacksRef.current.onProgress?.(p),
+      onFileComplete: (f) => callbacksRef.current.onFileComplete?.(f),
+      onTransferComplete: () => callbacksRef.current.onTransferComplete?.(),
+      onError: (e) => callbacksRef.current.onError?.(e),
     });
 
     socket.on('session:joined', onSessionJoined);
@@ -260,7 +256,7 @@ export function useReceiverFlow(initialCode: string = '') {
       socket.off('error', onError);
       socket.off('connect_error', onConnectError);
     };
-  }, [cleanupWebRTC, handleRemoteSignal, setupReceiver]);
+  }, [pcRef]);
 
   const setCode = useCallback((code: string) => {
     setReceiverState((prev) => ({
@@ -372,20 +368,20 @@ export function useReceiverFlow(initialCode: string = '') {
     socket.emit('receiver:reject', {
       sessionId: activeSessionIdRef.current,
     });
-    cleanupWebRTC();
+    fullReset();
     setReceiverState((prev) => ({
       ...prev,
       state: 'REJECTED',
       error: 'Transfer declined',
     }));
-  }, [cleanupWebRTC]);
+  }, [fullReset]);
 
   const reset = useCallback(() => {
     transferStartedRef.current = false;
-    cleanupWebRTC();
+    fullReset();
     disconnectSocket();
     setReceiverState(INITIAL_STATE);
-  }, [cleanupWebRTC]);
+  }, [fullReset]);
 
   return {
     ...receiverState,

@@ -22,6 +22,31 @@ export interface ReceiverCallbacks {
 }
 
 /**
+ * Helper to safely trigger browser file download via temporary anchor
+ */
+export function triggerAutoDownload(url: string, filename: string): void {
+  try {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      try {
+        if (a.parentNode) {
+          a.parentNode.removeChild(a);
+        }
+      } catch (e) {
+        // ignore
+      }
+    }, 1500);
+  } catch (dlErr) {
+    console.warn('[DropCode] Auto download blocked or failed:', dlErr);
+  }
+}
+
+/**
  * Generate unique ID for files (crypto.randomUUID fallback)
  */
 export function generateFileId(): string {
@@ -285,7 +310,7 @@ export function receiveFiles(
         } else if (message.type === 'file-end') {
           if (currentFileEntry) {
             const blob = new Blob(currentFileEntry.chunks, {
-              type: currentFileEntry.mimeType,
+              type: currentFileEntry.mimeType || 'application/octet-stream',
             });
             const downloadUrl = URL.createObjectURL(blob);
             const downloaded: DownloadedFile = {
@@ -297,16 +322,7 @@ export function receiveFiles(
             };
 
             // Trigger auto-download
-            try {
-              const a = document.createElement('a');
-              a.href = downloadUrl;
-              a.download = currentFileEntry.name;
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-            } catch (dlErr) {
-              console.warn('Auto download triggered blocked or failed:', dlErr);
-            }
+            triggerAutoDownload(downloadUrl, currentFileEntry.name);
 
             if (callbacks.onFileComplete) {
               callbacks.onFileComplete(downloaded);
@@ -383,6 +399,19 @@ export function receiveFiles(
             estimatedSecondsRemaining: eta,
           });
         }
+      } else if (typeof Blob !== 'undefined' && event.data instanceof Blob) {
+        // Fallback if browser delivered chunk as Blob
+        const blob = event.data;
+        blob.arrayBuffer().then((buffer) => {
+          const chunkSize = buffer.byteLength;
+          if (currentFileEntry) {
+            currentFileEntry.chunks.push(buffer);
+            currentFileEntry.receivedBytes += chunkSize;
+          }
+          totalBytesReceived += chunkSize;
+        }).catch((err) => {
+          console.error('[DropCode] Error reading DataChannel blob chunk:', err);
+        });
       }
     } catch (err: any) {
       console.error('Error processing received chunk/message:', err);
@@ -420,7 +449,7 @@ export async function sendFilesViaSocket(
   const manifest = createManifest(files);
   socket.emit('relay:start', { sessionId, manifest });
 
-  await new Promise((r) => setTimeout(r, 60));
+  await new Promise((r) => setTimeout(r, 100));
 
   // 2. Transfer each file
   for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
@@ -441,6 +470,8 @@ export async function sendFilesViaSocket(
         mimeType: file.type || 'application/octet-stream',
       },
     });
+
+    await new Promise((r) => setTimeout(r, 20));
 
     let offset = 0;
     while (offset < file.size) {
@@ -504,7 +535,7 @@ export async function sendFilesViaSocket(
     }
 
     socket.emit('relay:file-end', { sessionId, fileId: fileEntry.id });
-    await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 50));
   }
 
   socket.emit('relay:complete', { sessionId });
@@ -545,58 +576,9 @@ export function receiveFilesViaSocket(
   let lastSampleTime = startTime;
   let lastSampleBytes = 0;
   let currentSpeedBps = 0;
+  let chunkQueue: Promise<void> = Promise.resolve();
 
-  const onRelayStart = (manifestData: FileManifestEntry[]) => {
-    manifest = manifestData || [];
-    totalBytes = manifest.reduce((acc, f) => acc + f.size, 0);
-    currentFileIndex = 0;
-    if (callbacks.onManifest) {
-      callbacks.onManifest(manifest);
-    }
-  };
-
-  const onRelayFileStart = (fileInfo: any) => {
-    currentFileEntry = {
-      id: fileInfo.fileId,
-      name: fileInfo.fileName,
-      size: fileInfo.fileSize,
-      mimeType: fileInfo.mimeType || 'application/octet-stream',
-      chunks: [],
-      receivedBytes: 0,
-    };
-    const idx = manifest.findIndex((m) => m.id === fileInfo.fileId);
-    if (idx !== -1) {
-      currentFileIndex = idx;
-    }
-  };
-
-  const onRelayChunk = async (rawChunk: any) => {
-    if (!rawChunk) return;
-
-    let chunk: ArrayBuffer;
-    if (rawChunk instanceof ArrayBuffer) {
-      chunk = rawChunk;
-    } else if (ArrayBuffer.isView(rawChunk)) {
-      chunk = rawChunk.buffer.slice(
-        rawChunk.byteOffset,
-        rawChunk.byteOffset + rawChunk.byteLength
-      ) as ArrayBuffer;
-    } else if (typeof Blob !== 'undefined' && rawChunk instanceof Blob) {
-      chunk = await rawChunk.arrayBuffer();
-    } else if (rawChunk.buffer instanceof ArrayBuffer) {
-      chunk = rawChunk.buffer;
-    } else {
-      chunk = rawChunk as ArrayBuffer;
-    }
-
-    const chunkSize = chunk.byteLength || 0;
-    if (currentFileEntry) {
-      currentFileEntry.chunks.push(chunk);
-      currentFileEntry.receivedBytes += chunkSize;
-    }
-
-    totalBytesReceived += chunkSize;
-
+  const updateProgress = () => {
     const now = Date.now();
     const elapsedSinceSample = (now - lastSampleTime) / 1000;
     if (elapsedSinceSample >= 0.25) {
@@ -638,39 +620,123 @@ export function receiveFilesViaSocket(
     }
   };
 
-  const onRelayFileEnd = () => {
-    if (currentFileEntry) {
-      const blob = new Blob(currentFileEntry.chunks, {
-        type: currentFileEntry.mimeType,
-      });
-      const downloadUrl = URL.createObjectURL(blob);
-      const downloaded: DownloadedFile = {
-        id: currentFileEntry.id,
-        name: currentFileEntry.name,
-        url: downloadUrl,
-        size: currentFileEntry.size,
-        mimeType: currentFileEntry.mimeType,
-      };
-
-      try {
-        const a = document.createElement('a');
-        a.href = downloadUrl;
-        a.download = currentFileEntry.name;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      } catch (dlErr) {
-        console.warn('Auto download blocked:', dlErr);
-      }
-
-      if (callbacks.onFileComplete) {
-        callbacks.onFileComplete(downloaded);
-      }
-      currentFileEntry = null;
+  const onRelayStart = (manifestData: FileManifestEntry[]) => {
+    manifest = manifestData || [];
+    totalBytes = manifest.reduce((acc, f) => acc + f.size, 0);
+    currentFileIndex = 0;
+    if (callbacks.onManifest) {
+      callbacks.onManifest(manifest);
     }
   };
 
-  const onRelayComplete = () => {
+  const finalizeCurrentFile = () => {
+    if (!currentFileEntry) return;
+
+    const entry = currentFileEntry;
+    currentFileEntry = null;
+
+    const blob = new Blob(entry.chunks, {
+      type: entry.mimeType || 'application/octet-stream',
+    });
+    const downloadUrl = URL.createObjectURL(blob);
+    const downloaded: DownloadedFile = {
+      id: entry.id,
+      name: entry.name,
+      url: downloadUrl,
+      size: entry.size,
+      mimeType: entry.mimeType,
+    };
+
+    triggerAutoDownload(downloadUrl, entry.name);
+
+    if (callbacks.onFileComplete) {
+      callbacks.onFileComplete(downloaded);
+    }
+  };
+
+  const onRelayFileStart = async (fileInfo: any) => {
+    await chunkQueue;
+    if (currentFileEntry) {
+      finalizeCurrentFile();
+    }
+
+    currentFileEntry = {
+      id: fileInfo.fileId,
+      name: fileInfo.fileName,
+      size: fileInfo.fileSize,
+      mimeType: fileInfo.mimeType || 'application/octet-stream',
+      chunks: [],
+      receivedBytes: 0,
+    };
+    const idx = manifest.findIndex((m) => m.id === fileInfo.fileId);
+    if (idx !== -1) {
+      currentFileIndex = idx;
+    }
+  };
+
+  const processChunk = async (rawChunk: any) => {
+    if (!rawChunk) return;
+
+    let chunk: ArrayBuffer;
+    if (rawChunk instanceof ArrayBuffer) {
+      chunk = rawChunk;
+    } else if (ArrayBuffer.isView(rawChunk)) {
+      chunk = rawChunk.buffer.slice(
+        rawChunk.byteOffset,
+        rawChunk.byteOffset + rawChunk.byteLength
+      ) as ArrayBuffer;
+    } else if (typeof Blob !== 'undefined' && rawChunk instanceof Blob) {
+      chunk = await rawChunk.arrayBuffer();
+    } else if (rawChunk.buffer instanceof ArrayBuffer) {
+      chunk = rawChunk.buffer;
+    } else {
+      chunk = rawChunk as ArrayBuffer;
+    }
+
+    const chunkSize = chunk.byteLength || 0;
+    if (currentFileEntry) {
+      currentFileEntry.chunks.push(chunk);
+      currentFileEntry.receivedBytes += chunkSize;
+    }
+
+    totalBytesReceived += chunkSize;
+    updateProgress();
+  };
+
+  const onRelayChunk = (rawChunk: any) => {
+    if (!rawChunk) return;
+
+    // Fast synchronous path for ArrayBuffer
+    if (rawChunk instanceof ArrayBuffer) {
+      const chunkSize = rawChunk.byteLength;
+      if (currentFileEntry) {
+        currentFileEntry.chunks.push(rawChunk);
+        currentFileEntry.receivedBytes += chunkSize;
+      }
+      totalBytesReceived += chunkSize;
+      updateProgress();
+      return;
+    }
+
+    // Queue promise for Blob or non-ArrayBuffer chunks
+    chunkQueue = chunkQueue
+      .then(() => processChunk(rawChunk))
+      .catch((err) => {
+        console.error('[DropCode] Error processing relay chunk:', err);
+      });
+  };
+
+  const onRelayFileEnd = async () => {
+    await chunkQueue;
+    finalizeCurrentFile();
+  };
+
+  const onRelayComplete = async () => {
+    await chunkQueue;
+    if (currentFileEntry) {
+      finalizeCurrentFile();
+    }
+
     if (callbacks.onProgress) {
       callbacks.onProgress({
         currentFileIndex: Math.max(0, manifest.length - 1),
@@ -683,6 +749,7 @@ export function receiveFilesViaSocket(
         estimatedSecondsRemaining: 0,
       });
     }
+
     if (callbacks.onTransferComplete) {
       callbacks.onTransferComplete();
     }

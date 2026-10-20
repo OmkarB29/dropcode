@@ -39,8 +39,68 @@ export function DownloadProgress({
   error,
   onReset,
 }: DownloadProgressProps) {
+  const handleSaveFile = (file: DownloadedFile) => {
+    try {
+      const a = document.createElement('a');
+      a.href = file.url;
+      a.download = file.name;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        try {
+          if (a.parentNode) a.parentNode.removeChild(a);
+        } catch (e) {}
+      }, 1000);
+    } catch (e) {
+      window.open(file.url, '_blank');
+    }
+  };
+
+  const handleSaveAll = () => {
+    downloadedFiles.forEach((file, index) => {
+      setTimeout(() => {
+        handleSaveFile(file);
+      }, index * 300);
+    });
+  };
+
   // COMPLETED State
   if (state === 'COMPLETED') {
+    if (downloadedFiles.length === 0) {
+      return (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="p-8 rounded-3xl bg-navy-800 border border-amber-500/30 text-center max-w-md mx-auto shadow-2xl shadow-amber-500/10 space-y-6"
+        >
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+            <XCircle className="h-8 w-8 text-amber-400" />
+          </div>
+
+          <div>
+            <h3 className="text-2xl font-bold text-white tracking-tight">
+              Transfer Ended Early
+            </h3>
+            <p className="mt-2 text-sm text-slate-300">
+              The session was closed before file data could be fully received.
+            </p>
+          </div>
+
+          <div className="pt-2">
+            <Button
+              size="lg"
+              onClick={onReset}
+              className="w-full gap-2 bg-brand-cyan hover:bg-brand-cyan/90 text-navy-900 font-bold"
+            >
+              <RotateCcw className="h-4 w-4" />
+              <span>Try Again</span>
+            </Button>
+          </div>
+        </motion.div>
+      );
+    }
+
     return (
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
@@ -62,9 +122,22 @@ export function DownloadProgress({
 
         {/* List of files with manual download trigger in case browser blocked auto-download */}
         <div className="text-left space-y-2 p-3 rounded-2xl bg-navy-900 border border-white/5 max-h-56 overflow-y-auto">
-          <p className="text-[11px] font-mono text-slate-400 uppercase tracking-wider mb-2">
-            Downloaded Items (click to save again)
-          </p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[11px] font-mono text-slate-400 uppercase tracking-wider">
+              Downloaded Items
+            </p>
+            {downloadedFiles.length > 1 && (
+              <button
+                type="button"
+                onClick={handleSaveAll}
+                className="text-xs text-brand-cyan hover:underline flex items-center gap-1 font-semibold"
+              >
+                <FolderDown className="h-3 w-3" />
+                <span>Save All ({downloadedFiles.length})</span>
+              </button>
+            )}
+          </div>
+
           {downloadedFiles.map((file, idx) => (
             <div
               key={idx}
@@ -79,14 +152,14 @@ export function DownloadProgress({
                 </p>
               </div>
 
-              <a
-                href={file.url}
-                download={file.name}
-                className="inline-flex items-center gap-1 text-xs text-brand-cyan hover:underline shrink-0 p-1.5 rounded-lg bg-brand-cyan/10 border border-brand-cyan/20"
+              <button
+                type="button"
+                onClick={() => handleSaveFile(file)}
+                className="inline-flex items-center gap-1 text-xs text-brand-cyan hover:bg-brand-cyan/20 shrink-0 p-1.5 rounded-lg bg-brand-cyan/10 border border-brand-cyan/20 cursor-pointer transition-colors"
               >
                 <Download className="h-3.5 w-3.5" />
                 <span>Save</span>
-              </a>
+              </button>
             </div>
           ))}
         </div>

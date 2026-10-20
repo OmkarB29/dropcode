@@ -18,6 +18,9 @@ interface UseWebRTCOptions {
 }
 
 export function useWebRTC(options: UseWebRTCOptions = {}) {
+  const optionsRef = useRef<UseWebRTCOptions>(options);
+  optionsRef.current = options;
+
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
@@ -27,7 +30,6 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
 
   const cleanup = useCallback(() => {
     pendingCandidatesRef.current = [];
-    earlySignalQueueRef.current = [];
     if (dataChannelRef.current) {
       try {
         dataChannelRef.current.close();
@@ -48,30 +50,37 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     setConnectionState('closed');
   }, []);
 
-  const attachDataChannelEvents = useCallback(
-    (channel: RTCDataChannel) => {
-      dataChannelRef.current = channel;
+  const fullReset = useCallback(() => {
+    earlySignalQueueRef.current = [];
+    cleanup();
+  }, [cleanup]);
 
-      channel.onopen = () => {
-        setIsChannelOpen(true);
-        if (options.onDataChannelOpen) {
-          options.onDataChannelOpen(channel);
-        }
-      };
+  const attachDataChannelEvents = useCallback((channel: RTCDataChannel) => {
+    dataChannelRef.current = channel;
+    try {
+      channel.binaryType = 'arraybuffer';
+    } catch (e) {
+      // ignore
+    }
 
-      channel.onclose = () => {
-        setIsChannelOpen(false);
-        if (options.onDataChannelClose) {
-          options.onDataChannelClose();
-        }
-      };
+    channel.onopen = () => {
+      setIsChannelOpen(true);
+      if (optionsRef.current.onDataChannelOpen) {
+        optionsRef.current.onDataChannelOpen(channel);
+      }
+    };
 
-      channel.onerror = (err) => {
-        console.error('WebRTC DataChannel error:', err);
-      };
-    },
-    [options]
-  );
+    channel.onclose = () => {
+      setIsChannelOpen(false);
+      if (optionsRef.current.onDataChannelClose) {
+        optionsRef.current.onDataChannelClose();
+      }
+    };
+
+    channel.onerror = (err) => {
+      console.error('WebRTC DataChannel error:', err);
+    };
+  }, []);
 
   const setupSender = useCallback(
     async (sendSignal: (signal: WebRTCSignal) => void): Promise<RTCPeerConnection> => {
@@ -86,8 +95,8 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
 
       pc.onconnectionstatechange = () => {
         setConnectionState(pc.connectionState);
-        if (options.onConnectionStateChange) {
-          options.onConnectionStateChange(pc.connectionState);
+        if (optionsRef.current.onConnectionStateChange) {
+          optionsRef.current.onConnectionStateChange(pc.connectionState);
         }
       };
 
@@ -106,46 +115,7 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
 
       return pc;
     },
-    [attachDataChannelEvents, cleanup, options]
-  );
-
-  const setupReceiver = useCallback(
-    (sendSignal: (signal: WebRTCSignal) => void): RTCPeerConnection => {
-      cleanup();
-
-      const pc = createPeerConnection(
-        (candidate) => {
-          sendSignal({
-            type: 'candidate',
-            candidate: candidate.toJSON(),
-          });
-        },
-        (channel) => {
-          attachDataChannelEvents(channel);
-        }
-      );
-
-      pc.onconnectionstatechange = () => {
-        setConnectionState(pc.connectionState);
-        if (options.onConnectionStateChange) {
-          options.onConnectionStateChange(pc.connectionState);
-        }
-      };
-
-      pcRef.current = pc;
-
-      // Drain early signals that arrived before setupReceiver was called
-      if (earlySignalQueueRef.current.length > 0) {
-        const queued = [...earlySignalQueueRef.current];
-        earlySignalQueueRef.current = [];
-        for (const item of queued) {
-          handleRemoteSignal(item.signal, item.sendSignal || sendSignal);
-        }
-      }
-
-      return pc;
-    },
-    [attachDataChannelEvents, cleanup, options]
+    [attachDataChannelEvents, cleanup]
   );
 
   const handleRemoteSignal = useCallback(
@@ -203,11 +173,55 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     []
   );
 
+  const setupReceiver = useCallback(
+    (sendSignal: (signal: WebRTCSignal) => void): RTCPeerConnection => {
+      // If an active peer connection is already set up and not closed, reuse it
+      if (pcRef.current && pcRef.current.signalingState !== 'closed') {
+        return pcRef.current;
+      }
+
+      cleanup();
+
+      const pc = createPeerConnection(
+        (candidate) => {
+          sendSignal({
+            type: 'candidate',
+            candidate: candidate.toJSON(),
+          });
+        },
+        (channel) => {
+          attachDataChannelEvents(channel);
+        }
+      );
+
+      pc.onconnectionstatechange = () => {
+        setConnectionState(pc.connectionState);
+        if (optionsRef.current.onConnectionStateChange) {
+          optionsRef.current.onConnectionStateChange(pc.connectionState);
+        }
+      };
+
+      pcRef.current = pc;
+
+      // Drain early signals that arrived before setupReceiver was called
+      if (earlySignalQueueRef.current.length > 0) {
+        const queued = [...earlySignalQueueRef.current];
+        earlySignalQueueRef.current = [];
+        for (const item of queued) {
+          handleRemoteSignal(item.signal, item.sendSignal || sendSignal);
+        }
+      }
+
+      return pc;
+    },
+    [attachDataChannelEvents, cleanup, handleRemoteSignal]
+  );
+
   useEffect(() => {
     return () => {
-      cleanup();
+      fullReset();
     };
-  }, [cleanup]);
+  }, [fullReset]);
 
   return {
     pcRef,
@@ -218,5 +232,6 @@ export function useWebRTC(options: UseWebRTCOptions = {}) {
     setupReceiver,
     handleRemoteSignal,
     cleanup,
+    fullReset,
   };
 }

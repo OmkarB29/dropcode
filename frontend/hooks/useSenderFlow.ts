@@ -78,6 +78,7 @@ export function useSenderFlow() {
     setupSender,
     handleRemoteSignal,
     cleanup: cleanupWebRTC,
+    fullReset,
     dataChannelRef,
   } = useWebRTC({
     onDataChannelOpen: async (channel) => {
@@ -133,7 +134,7 @@ export function useSenderFlow() {
   });
 
   const initiateTransfer = useCallback(async () => {
-    transferStartedRef.current = false;
+    if (transferStartedRef.current) return;
     setSenderState((prev) => ({ ...prev, state: 'CONNECTING' }));
 
     if (fallbackTimerRef.current) {
@@ -168,6 +169,15 @@ export function useSenderFlow() {
     }
   }, [setupSender, startRelayTransfer]);
 
+  const initiateTransferRef = useRef(initiateTransfer);
+  initiateTransferRef.current = initiateTransfer;
+
+  const handleRemoteSignalRef = useRef(handleRemoteSignal);
+  handleRemoteSignalRef.current = handleRemoteSignal;
+
+  const cleanupWebRTCRef = useRef(cleanupWebRTC);
+  cleanupWebRTCRef.current = cleanupWebRTC;
+
   // Socket setup and listeners
   useEffect(() => {
     const socket = getSocket();
@@ -198,13 +208,21 @@ export function useSenderFlow() {
       }));
     };
 
+    const onReceiverAccepted = () => {
+      if (!transferStartedRef.current) {
+        initiateTransferRef.current();
+      }
+    };
+
     const onTransferApproved = () => {
-      initiateTransfer();
+      if (!transferStartedRef.current) {
+        initiateTransferRef.current();
+      }
     };
 
     const onReceiverSignal = (data: { signal: WebRTCSignal }) => {
       const sig = data.signal || data;
-      handleRemoteSignal(sig);
+      handleRemoteSignalRef.current(sig);
     };
 
     const onSessionExpired = () => {
@@ -213,7 +231,7 @@ export function useSenderFlow() {
         state: 'EXPIRED',
         error: 'Transfer session expired',
       }));
-      cleanupWebRTC();
+      cleanupWebRTCRef.current();
     };
 
     const onTransferCancelled = (data?: { reason?: string }) => {
@@ -222,7 +240,7 @@ export function useSenderFlow() {
         state: 'CANCELLED',
         error: data?.reason || 'Transfer was cancelled by receiver',
       }));
-      cleanupWebRTC();
+      cleanupWebRTCRef.current();
     };
 
     const onError = (data: { message?: string }) => {
@@ -243,6 +261,7 @@ export function useSenderFlow() {
 
     socket.on('session:created', onSessionCreated);
     socket.on('session:receiver-joined', onReceiverJoined);
+    socket.on('receiver:accepted', onReceiverAccepted);
     socket.on('transfer:approved', onTransferApproved);
     socket.on('receiver:webrtc-signal', onReceiverSignal);
     socket.on('webrtc:signal', onReceiverSignal);
@@ -255,6 +274,7 @@ export function useSenderFlow() {
     return () => {
       socket.off('session:created', onSessionCreated);
       socket.off('session:receiver-joined', onReceiverJoined);
+      socket.off('receiver:accepted', onReceiverAccepted);
       socket.off('transfer:approved', onTransferApproved);
       socket.off('receiver:webrtc-signal', onReceiverSignal);
       socket.off('webrtc:signal', onReceiverSignal);
@@ -264,7 +284,7 @@ export function useSenderFlow() {
       socket.off('error', onError);
       socket.off('connect_error', onConnectError);
     };
-  }, [cleanupWebRTC, handleRemoteSignal, setupSender]);
+  }, []);
 
   // Actions
   const addFiles = useCallback((newFiles: File[]) => {
@@ -340,7 +360,6 @@ export function useSenderFlow() {
       files: manifest,
     };
 
-    // Emit event with callback fallback
     socket.emit(
       'sender:create-session',
       payload,
@@ -408,13 +427,13 @@ export function useSenderFlow() {
     socket.emit('sender:cancel', {
       sessionId: activeSessionIdRef.current,
     });
-    cleanupWebRTC();
+    fullReset();
     setSenderState((prev) => ({
       ...prev,
       state: 'CANCELLED',
       error: 'Transfer cancelled',
     }));
-  }, [cleanupWebRTC]);
+  }, [fullReset]);
 
   const reset = useCallback(() => {
     isCancelledRef.current = false;
@@ -423,10 +442,10 @@ export function useSenderFlow() {
       clearTimeout(fallbackTimerRef.current);
       fallbackTimerRef.current = null;
     }
-    cleanupWebRTC();
+    fullReset();
     disconnectSocket();
     setSenderState(INITIAL_STATE);
-  }, [cleanupWebRTC]);
+  }, [fullReset]);
 
   return {
     ...senderState,
