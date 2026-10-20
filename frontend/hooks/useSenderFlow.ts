@@ -312,6 +312,15 @@ export function useSenderFlow() {
     });
   }, []);
 
+  const addTextFile = useCallback((text: string, title?: string) => {
+    if (!text.trim()) return;
+    const cleanTitle = (title?.trim() || 'shared-text').replace(/[/\\?%*:|"<>]/g, '-');
+    const filename = cleanTitle.includes('.') ? cleanTitle : `${cleanTitle}.txt`;
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const file = new File([blob], filename, { type: 'text/plain;charset=utf-8' });
+    addFiles([file]);
+  }, [addFiles]);
+
   const removeFile = useCallback((index: number) => {
     setSenderState((prev) => {
       const updated = prev.files.filter((_, i) => i !== index);
@@ -333,13 +342,22 @@ export function useSenderFlow() {
     }));
   }, []);
 
-  const createSession = useCallback(async () => {
-    if (senderState.files.length === 0) {
+  const createSession = useCallback(async (overrideFiles?: File[]) => {
+    const targetFiles = overrideFiles || senderState.files;
+    if (targetFiles.length === 0) {
       setSenderState((prev) => ({
         ...prev,
-        error: 'Please select at least one file to share',
+        error: 'Please select at least one file or enter text to share',
       }));
       return;
+    }
+
+    if (overrideFiles) {
+      filesRef.current = overrideFiles;
+      setSenderState((prev) => ({
+        ...prev,
+        files: overrideFiles,
+      }));
     }
 
     isCancelledRef.current = false;
@@ -353,7 +371,7 @@ export function useSenderFlow() {
         localStorage.getItem('dropcode_device_name')) ||
       'DropCode Sender';
 
-    const manifest: FileManifestEntry[] = createManifest(senderState.files);
+    const manifest: FileManifestEntry[] = createManifest(targetFiles);
 
     const payload = {
       deviceName,
@@ -395,6 +413,15 @@ export function useSenderFlow() {
       error: null,
     }));
   }, [senderState.files]);
+
+  const sendTextImmediately = useCallback((text: string, title?: string) => {
+    if (!text.trim()) return;
+    const cleanTitle = (title?.trim() || 'shared-text').replace(/[/\\?%*:|"<>]/g, '-');
+    const filename = cleanTitle.includes('.') ? cleanTitle : `${cleanTitle}.txt`;
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const file = new File([blob], filename, { type: 'text/plain;charset=utf-8' });
+    createSession([file]);
+  }, [createSession]);
 
   const approveReceiver = useCallback(() => {
     const socket = getSocket();
@@ -450,6 +477,8 @@ export function useSenderFlow() {
   return {
     ...senderState,
     addFiles,
+    addTextFile,
+    sendTextImmediately,
     removeFile,
     clearFiles,
     createSession,

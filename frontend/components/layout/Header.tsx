@@ -12,7 +12,7 @@ export function Header() {
 
   const navLinks = [
     { href: '/', label: 'Home' },
-    { href: '/send', label: 'Send Files', icon: Send },
+    { href: '/send', label: 'Send', icon: Send },
     { href: '/receive', label: 'Receive', icon: Download },
   ];
 

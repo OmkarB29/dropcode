@@ -10,6 +10,9 @@ import {
   ExternalLink,
   Zap,
   FolderDown,
+  Copy,
+  Check,
+  FileText,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ProgressBar } from '@/components/shared/ProgressBar';
@@ -29,6 +32,95 @@ interface DownloadProgressProps {
   totalExpectedFiles: number;
   error: string | null;
   onReset: () => void;
+}
+
+function ReceivedTextCard({ file }: { file: DownloadedFile }) {
+  const [content, setContent] = React.useState<string | null>(null);
+  const [copied, setCopied] = React.useState(false);
+
+  React.useEffect(() => {
+    let active = true;
+    fetch(file.url)
+      .then((res) => res.text())
+      .then((txt) => {
+        if (active) setContent(txt);
+      })
+      .catch((err) => {
+        console.warn('Failed to read text snippet:', err);
+      });
+    return () => {
+      active = false;
+    };
+  }, [file.url]);
+
+  if (content === null) return null;
+
+  const handleCopy = () => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const isUrl =
+    content.trim().startsWith('http://') ||
+    content.trim().startsWith('https://');
+
+  return (
+    <div className="p-4 rounded-2xl bg-navy-900 border border-brand-cyan/25 text-left space-y-2.5 shadow-lg">
+      <div className="flex items-center justify-between gap-2 border-b border-white/5 pb-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <FileText className="h-4 w-4 text-brand-cyan shrink-0" />
+          <span className="text-xs font-semibold text-white truncate max-w-[180px] sm:max-w-xs">
+            {file.name}
+          </span>
+          <span className="text-[10px] font-mono text-slate-400 shrink-0">
+            ({content.length} chars)
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          {isUrl && (
+            <a
+              href={content.trim()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-navy-800 border border-white/10 text-xs text-brand-cyan hover:underline"
+            >
+              <ExternalLink className="h-3 w-3" />
+              <span>Open Link</span>
+            </a>
+          )}
+
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleCopy}
+            className="h-7 px-2.5 text-xs font-semibold bg-brand-cyan/15 hover:bg-brand-cyan/25 text-cyan-300 border border-brand-cyan/30 rounded-lg gap-1"
+          >
+            {copied ? (
+              <>
+                <Check className="h-3 w-3 text-emerald-400" />
+                <span>Copied!</span>
+              </>
+            ) : (
+              <>
+                <Copy className="h-3 w-3" />
+                <span>Copy</span>
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      <div className="p-3 rounded-xl bg-navy-950 border border-white/5 max-h-40 overflow-y-auto">
+        <pre className="text-xs font-mono text-slate-200 whitespace-pre-wrap break-all leading-relaxed select-all">
+          {content}
+        </pre>
+      </div>
+    </div>
+  );
 }
 
 export function DownloadProgress({
@@ -101,6 +193,18 @@ export function DownloadProgress({
       );
     }
 
+    const isTextFile = (file: DownloadedFile) =>
+      file.name.endsWith('.txt') ||
+      file.name.endsWith('.md') ||
+      file.name.endsWith('.json') ||
+      file.name.endsWith('.js') ||
+      file.name.endsWith('.ts') ||
+      file.name.endsWith('.py') ||
+      file.name.endsWith('.log') ||
+      Boolean(file.mimeType?.startsWith('text/'));
+
+    const textFiles = downloadedFiles.filter(isTextFile);
+
     return (
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
@@ -113,12 +217,23 @@ export function DownloadProgress({
 
         <div>
           <h3 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
-            Files Received!
+            {textFiles.length === downloadedFiles.length
+              ? 'Text Received!'
+              : 'Files & Text Received!'}
           </h3>
           <p className="mt-1 text-sm text-slate-300">
-            {downloadedFiles.length} file(s) successfully received directly from the sender.
+            {downloadedFiles.length} item(s) successfully received directly from the sender.
           </p>
         </div>
+
+        {/* Text Snippets preview cards (if any) */}
+        {textFiles.length > 0 && (
+          <div className="space-y-3">
+            {textFiles.map((tf, i) => (
+              <ReceivedTextCard key={tf.id || i} file={tf} />
+            ))}
+          </div>
+        )}
 
         {/* List of files with manual download trigger in case browser blocked auto-download */}
         <div className="text-left space-y-2 p-3 rounded-2xl bg-navy-900 border border-white/5 max-h-56 overflow-y-auto">

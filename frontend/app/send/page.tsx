@@ -2,14 +2,16 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowRight, Sparkles, AlertCircle, FilePlus2 } from 'lucide-react';
+import { ArrowRight, Sparkles, AlertCircle, UploadCloud, FileText } from 'lucide-react';
 import { useSenderFlow } from '@/hooks/useSenderFlow';
 import { FileDropZone } from '@/components/send/FileDropZone';
+import { TextShareZone } from '@/components/send/TextShareZone';
 import { FileList } from '@/components/send/FileList';
 import { TransferCode } from '@/components/send/TransferCode';
 import { ReceiverApproval } from '@/components/send/ReceiverApproval';
 import { TransferStatus } from '@/components/send/TransferStatus';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
 export default function SendPage() {
   const {
@@ -21,6 +23,8 @@ export default function SendPage() {
     progress,
     error,
     addFiles,
+    addTextFile,
+    sendTextImmediately,
     removeFile,
     clearFiles,
     createSession,
@@ -56,15 +60,15 @@ export default function SendPage() {
           <span>Encrypted Peer-to-Peer Transfer</span>
         </div>
         <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-          Send Files Directly
+          Send Files &amp; Text Directly
         </h1>
         <p className="mt-2 text-sm sm:text-base text-slate-400 max-w-md mx-auto">
-          Add files to generate a secure transfer code. Files stay on your device until the receiver connects.
+          Share files, documents, links, or text snippets with a temporary 8-character code. No cloud storage required.
         </p>
       </div>
 
       <AnimatePresence mode="wait">
-        {/* Step 1: IDLE / SELECTING FILES */}
+        {/* Step 1: IDLE / SELECTING FILES OR TEXT */}
         {isSelectingOrIdle && (
           <motion.div
             key="step-select-files"
@@ -73,10 +77,40 @@ export default function SendPage() {
             exit={{ opacity: 0, y: -15 }}
             className="space-y-6 max-w-2xl mx-auto"
           >
-            <FileDropZone onFilesSelected={addFiles} />
+            <Tabs defaultValue="files" className="w-full">
+              <div className="flex justify-center mb-6">
+                <TabsList className="bg-navy-900/90 border border-white/10 p-1 rounded-2xl h-12 shadow-lg">
+                  <TabsTrigger
+                    value="files"
+                    className="gap-2 px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold data-[state=active]:bg-brand-violet data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=active]:shadow-brand-violet/25 text-slate-300 transition-all"
+                  >
+                    <UploadCloud className="h-4 w-4" />
+                    <span>Files &amp; Media</span>
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="text"
+                    className="gap-2 px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold data-[state=active]:bg-brand-cyan data-[state=active]:text-navy-900 data-[state=active]:shadow-lg data-[state=active]:shadow-brand-cyan/25 text-slate-300 transition-all"
+                  >
+                    <FileText className="h-4 w-4" />
+                    <span>Share Text / Snippet</span>
+                  </TabsTrigger>
+                </TabsList>
+              </div>
+
+              <TabsContent value="files">
+                <FileDropZone onFilesSelected={addFiles} />
+              </TabsContent>
+
+              <TabsContent value="text">
+                <TextShareZone
+                  onAddTextFile={addTextFile}
+                  onSendImmediately={sendTextImmediately}
+                />
+              </TabsContent>
+            </Tabs>
 
             {files.length > 0 && (
-              <div className="space-y-4">
+              <div className="space-y-4 pt-2">
                 <FileList
                   files={files}
                   onRemove={removeFile}
@@ -93,10 +127,10 @@ export default function SendPage() {
                 <div className="pt-2">
                   <Button
                     size="lg"
-                    onClick={createSession}
+                    onClick={() => createSession()}
                     className="w-full gap-2 bg-brand-violet hover:bg-brand-violet/90 text-white font-semibold text-base shadow-xl shadow-brand-violet/30 h-14 rounded-2xl"
                   >
-                    <span>Generate Transfer Code</span>
+                    <span>Generate Transfer Code ({files.length} item{files.length > 1 ? 's' : ''})</span>
                     <ArrowRight className="h-5 w-5" />
                   </Button>
                 </div>
@@ -150,7 +184,7 @@ export default function SendPage() {
               state={state}
               progress={progress}
               error={error}
-              totalFiles={files.length}
+              totalFiles={files.length || 1}
               onCancel={cancelTransfer}
               onReset={reset}
             />

@@ -65,7 +65,9 @@ export function FilePreview({
           <Download className="h-6 w-6" />
         </div>
         <h3 className="text-2xl font-bold text-white tracking-tight">
-          Ready to Receive Files
+          {files.length > 0 && files.every((f) => f.name.endsWith('.txt') || f.mimeType?.startsWith('text/'))
+            ? 'Ready to Receive Text'
+            : 'Ready to Receive Transfer'}
         </h3>
         <p className="mt-1 text-xs sm:text-sm text-slate-400">
           Incoming transfer from{' '}
