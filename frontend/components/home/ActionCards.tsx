@@ -30,7 +30,7 @@ export function ActionCards() {
                 Send Files
               </h2>
               <p className="mt-3 text-slate-400 text-sm sm:text-base leading-relaxed">
-                Drop your files and generate a one-time 8-character code or QR. Approve incoming receivers securely with zero upload to cloud.
+                Drop your files or type text and generate a one-time 4-digit PIN or QR. Approve incoming receivers securely with zero upload to cloud.
               </p>
 
               {/* Feature pills */}
@@ -81,7 +81,7 @@ export function ActionCards() {
                 Receive Files
               </h2>
               <p className="mt-3 text-slate-400 text-sm sm:text-base leading-relaxed">
-                Enter an 8-character transfer code or open a shared link to download files directly from the sender&apos;s device over encrypted P2P.
+                Enter a 4-digit PIN or open a shared link to download files and receive text directly from the sender&apos;s device over encrypted P2P.
               </p>
 
               {/* Feature pills */}

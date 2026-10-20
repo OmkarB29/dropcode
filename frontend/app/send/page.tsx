@@ -63,7 +63,7 @@ export default function SendPage() {
           Send Files &amp; Text Directly
         </h1>
         <p className="mt-2 text-sm sm:text-base text-slate-400 max-w-md mx-auto">
-          Share files, documents, links, or text snippets with a temporary 8-character code. No cloud storage required.
+          Share files, documents, links, or text snippets with a temporary 4-digit PIN. No cloud storage required.
         </p>
       </div>
 

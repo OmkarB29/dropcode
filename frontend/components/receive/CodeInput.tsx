@@ -48,7 +48,7 @@ export function CodeInput({
     }
   };
 
-  const isValidCode = code.replace(/[^A-Za-z0-9]/g, '').length === 8;
+  const isValidCode = code.replace(/[^A-Za-z0-9]/g, '').length >= 4;
 
   return (
     <motion.div
@@ -61,10 +61,10 @@ export function CodeInput({
       </div>
 
       <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
-        Enter Transfer Code
+        Enter 4-Digit PIN
       </h2>
       <p className="mt-2 text-xs sm:text-sm text-slate-400">
-        Enter the 8-character code displayed on the sender&apos;s device to initiate download.
+        Enter the 4-digit PIN displayed on the sender&apos;s device to initiate download.
       </p>
 
       {/* Code Input Box */}
@@ -75,10 +75,10 @@ export function CodeInput({
             value={code}
             onChange={handleInputChange}
             onKeyDown={handleKeyDown}
-            placeholder="ABCD-7392"
-            maxLength={9} // 8 chars + 1 hyphen
+            placeholder="4827"
+            maxLength={8}
             disabled={loading}
-            className="h-16 text-center text-2xl sm:text-3xl font-mono tracking-widest uppercase bg-navy-900 border-2 border-white/10 focus-visible:border-brand-cyan focus-visible:ring-brand-cyan rounded-2xl selection:bg-brand-cyan selection:text-navy-900 placeholder:text-slate-600"
+            className="h-16 text-center text-3xl sm:text-4xl font-mono tracking-[0.35em] font-extrabold bg-navy-900 border-2 border-white/10 focus-visible:border-brand-cyan focus-visible:ring-brand-cyan rounded-2xl selection:bg-brand-cyan selection:text-navy-900 text-brand-cyan placeholder:text-slate-600 placeholder:tracking-normal placeholder:font-sans placeholder:text-lg"
             autoFocus
           />
 
@@ -120,7 +120,7 @@ export function CodeInput({
       </div>
 
       <div className="mt-6 pt-4 border-t border-white/5 text-[11px] text-slate-400">
-        Codes are case-insensitive and formatted automatically (e.g. ABCD-7392).
+        Enter the 4-digit numeric PIN (e.g. 4827) provided by the sender.
       </div>
     </motion.div>
   );

@@ -57,8 +57,15 @@ export const JoinSessionPayloadSchema = z.object({
   code: z
     .string()
     .trim()
-    .transform((val) => val.toUpperCase())
-    .pipe(z.string().regex(/^[A-Z]{4}-[0-9]{4}$/, 'Code must be in format XXXX-NNNN')),
+    .transform((val) => val.toUpperCase().replace(/\s+/g, ''))
+    .pipe(
+      z
+        .string()
+        .regex(
+          /^[0-9]{4}$|^[A-Z0-9]{4}$|^[A-Z0-9]{4}-[0-9]{4}$|^[A-Z0-9]{6,8}$/,
+          'PIN must be 4 digits'
+        )
+    ),
   deviceName: z.string().min(1).max(50),
 });
 

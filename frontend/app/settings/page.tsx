@@ -60,7 +60,7 @@ export default function SettingsPage() {
     },
     {
       q: 'Why does the sender need to approve the receiver?',
-      a: 'Approval prevents unauthorized downloads if someone accidentally or maliciously guesses your 8-character code. Even with the code, the file transfer will not start until you explicitly click "Approve".',
+      a: 'Approval prevents unauthorized downloads if someone accidentally or maliciously guesses your 4-digit PIN. Even with the code, the file transfer will not start until you explicitly click "Approve".',
     },
   ];
 

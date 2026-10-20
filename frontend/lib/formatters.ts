@@ -39,12 +39,15 @@ export function formatETA(seconds: number): string {
 
 export function formatCode(raw: string): string {
   if (!raw) return '';
-  // Clean to alphanumeric uppercase, max 8 chars
-  const clean = raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
-  if (clean.length > 4) {
-    return `${clean.slice(0, 4)}-${clean.slice(4)}`;
+  const clean = raw.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  // Default to 4-digit PIN
+  if (/^\d+$/.test(clean)) {
+    return clean.slice(0, 4);
   }
-  return clean;
+  if (clean.length > 4) {
+    return `${clean.slice(0, 4)}-${clean.slice(4, 8)}`;
+  }
+  return clean.slice(0, 4);
 }
 
 export function getFileCategory(

@@ -62,7 +62,7 @@ function ReceiveContent() {
           Receive Files Instantly
         </h1>
         <p className="mt-2 text-sm sm:text-base text-slate-400 max-w-md mx-auto">
-          Connect directly to the sender with an 8-character code and download files without cloud storage.
+          Connect directly to the sender with a 4-digit PIN and download files without cloud storage.
         </p>
       </div>
 

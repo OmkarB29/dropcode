@@ -20,7 +20,7 @@ export const metadata: Metadata = {
     template: '%s | DropCode',
   },
   description:
-    'Share files instantly between any device using a short 8-character transfer code. Direct peer-to-peer WebRTC transfer with zero cloud storage, no account needed, and no file size limits.',
+    'Share files and text instantly between any device using a short 4-digit PIN. Direct peer-to-peer WebRTC transfer with zero cloud storage, no account needed, and no file size limits.',
   keywords: [
     'file sharing',
     'p2p file transfer',

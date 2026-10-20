@@ -452,7 +452,7 @@ export function AnimatedCarEntrance() {
                     Send Files &amp; Text
                   </h2>
                   <p className="mt-3 text-slate-400 text-sm sm:text-base leading-relaxed">
-                    Drop your files, videos, or paste text notes &amp; links. Generate a one-time 8-character transfer code without uploading to the cloud.
+                    Drop your files, videos, or paste text notes &amp; links. Generate a one-time 4-digit PIN without uploading to the cloud.
                   </p>
 
                   {/* Feature pills */}
@@ -503,7 +503,7 @@ export function AnimatedCarEntrance() {
                     Receive Files
                   </h2>
                   <p className="mt-3 text-slate-400 text-sm sm:text-base leading-relaxed">
-                    Enter an 8-character transfer code or open a shared link to download files and copy text directly from the sender&apos;s device.
+                    Enter a 4-digit PIN or open a shared link to download files and copy text directly from the sender&apos;s device.
                   </p>
 
                   {/* Feature pills */}

@@ -74,9 +74,9 @@ export function TransferCode({ code, expiresAt, onCancel }: TransferCodeProps) {
       <div className="w-full relative group">
         <div className="p-6 rounded-2xl bg-navy-900/90 border-2 border-brand-violet/40 shadow-2xl shadow-brand-violet/20 flex flex-col items-center justify-center">
           <span className="text-xs font-mono uppercase tracking-widest text-slate-400 mb-2">
-            One-Time Transfer Code
+            One-Time 4-Digit PIN
           </span>
-          <div className="text-4xl sm:text-5xl font-extrabold font-mono tracking-widest text-white selection:bg-brand-violet">
+          <div className="text-5xl sm:text-6xl font-extrabold font-mono tracking-[0.25em] text-white selection:bg-brand-violet">
             {code}
           </div>
 
@@ -95,7 +95,7 @@ export function TransferCode({ code, expiresAt, onCancel }: TransferCodeProps) {
               ) : (
                 <>
                   <Copy className="h-3.5 w-3.5 text-brand-cyan" />
-                  <span>Copy Code</span>
+                  <span>Copy PIN</span>
                 </>
               )}
             </Button>

@@ -19,7 +19,7 @@ export function HowItWorks() {
       icon: Hash,
       title: 'Generate a code',
       description:
-        'Drop your files and generate a unique, short 8-character transfer code (e.g. ABCD-7392) or a scannable QR code.',
+        'Drop files or enter text to generate a unique, short 4-digit PIN (e.g. 4827) or a scannable QR code.',
       accent: 'border-brand-violet/40 text-violet-400 bg-brand-violet/10',
     },
     {

@@ -268,10 +268,10 @@ export function useReceiverFlow(initialCode: string = '') {
 
   const joinSession = useCallback(() => {
     const rawCode = receiverState.code.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
-    if (rawCode.length < 6) {
+    if (rawCode.length < 4) {
       setReceiverState((prev) => ({
         ...prev,
-        error: 'Please enter a valid transfer code',
+        error: 'Please enter a valid 4-digit PIN',
       }));
       return;
     }
