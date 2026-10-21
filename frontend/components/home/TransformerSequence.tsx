@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { Zap, FastForward, Navigation, ShieldCheck } from 'lucide-react';
+import { Zap, FastForward, Navigation } from 'lucide-react';
 import { soundEffects } from '@/lib/soundEffects';
 
 interface TransformerSequenceProps {
@@ -17,47 +17,33 @@ export function TransformerSequence({
 }: TransformerSequenceProps) {
   const router = useRouter();
 
-  // Sequence phases:
-  // 1. 'decoupling': Car rises into mid-air, panels loosen & sparks fire (0 - 0.8s)
-  // 2. 'morphing': Mechanical expansion into Supersonic Fighter Jet (0.8s - 2.0s)
-  // 3. 'afterburners': Twin jet engines ignite with shock diamonds & sonic rings (2.0s - 2.7s)
-  // 4. 'hyperspace_flyby': Plane banks & zooms DIRECTLY into the camera/screen (2.7s - 3.4s)
-  const [phase, setPhase] = useState<
-    'decoupling' | 'morphing' | 'afterburners' | 'hyperspace_flyby'
-  >('decoupling');
-
-  const [machSpeed, setMachSpeed] = useState('0.0');
+  // Snappy 3-stage sequence for 60fps buttery-smooth hardware acceleration:
+  // 1. 'transform' (0 - 0.6s): Car chassis unlocks, wheels fold in, wings sweep open
+  // 2. 'ignite' (0.6 - 1.0s): Twin afterburners fire up & trajectory locks
+  // 3. 'flyby' (1.0 - 1.6s): Jet zooms directly TOWARDS screen at hypersonic speed
+  const [stage, setStage] = useState<'transform' | 'ignite' | 'flyby'>('transform');
 
   useEffect(() => {
-    // Trigger synthesized audio effects
+    // Play ultra-lightweight Web Audio soundscape
     soundEffects.playTransformationSequence();
 
-    // Timeline steps
-    const timerMorph = setTimeout(() => {
-      setPhase('morphing');
-      setMachSpeed('1.4');
-    }, 800);
+    const tIgnite = setTimeout(() => {
+      setStage('ignite');
+    }, 600);
 
-    const timerAfterburners = setTimeout(() => {
-      setPhase('afterburners');
-      setMachSpeed('3.8');
-    }, 1900);
+    const tFlyby = setTimeout(() => {
+      setStage('flyby');
+    }, 1050);
 
-    const timerFlyby = setTimeout(() => {
-      setPhase('hyperspace_flyby');
-      setMachSpeed('MACH 5.2');
-    }, 2650);
-
-    const timerComplete = setTimeout(() => {
+    const tComplete = setTimeout(() => {
       router.push(destination);
       onComplete();
-    }, 3400);
+    }, 1650);
 
     return () => {
-      clearTimeout(timerMorph);
-      clearTimeout(timerAfterburners);
-      clearTimeout(timerFlyby);
-      clearTimeout(timerComplete);
+      clearTimeout(tIgnite);
+      clearTimeout(tFlyby);
+      clearTimeout(tComplete);
     };
   }, [destination, onComplete, router]);
 
@@ -66,483 +52,275 @@ export function TransformerSequence({
     onComplete();
   };
 
-  const isMorphingOrLater =
-    phase === 'morphing' ||
-    phase === 'afterburners' ||
-    phase === 'hyperspace_flyby';
-
-  const isAfterburnersOrLater =
-    phase === 'afterburners' || phase === 'hyperspace_flyby';
-
-  const isFlyby = phase === 'hyperspace_flyby';
-
   const isSend = destination === '/send';
-  const themeColor = isSend ? '#8b5cf6' : '#06b6d4'; // Violet for Send, Cyan for Receive
-  const themeGlow = isSend ? 'shadow-brand-violet/50' : 'shadow-brand-cyan/50';
+  const themeHex = isSend ? '#8b5cf6' : '#06b6d4';
+  const destName = isSend ? 'SEND PORTAL' : 'RECEIVE PORTAL';
+
+  const isTransformed = stage === 'ignite' || stage === 'flyby';
+  const isFlyby = stage === 'flyby';
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden bg-navy-950/95 backdrop-blur-2xl select-none">
-      {/* 1. FULL-SCREEN SCI-FI CYBER GRID & PERSPECTIVE WARP TUNNEL */}
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden bg-[#030712] select-none"
+      style={{ willChange: 'opacity' }}
+    >
+      {/* 1. LIGHTWEIGHT GPU-ACCELERATED BACKGROUND GRID */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
-        {/* Radial Depth Gradient */}
+        {/* Simple Radial Gradient (No costly blur filters) */}
         <div
           className="absolute inset-0"
           style={{
-            background: `radial-gradient(circle at 50% 50%, ${themeColor}1a 0%, #030712 75%)`,
+            background: `radial-gradient(circle at 50% 50%, ${themeHex}22 0%, #030712 80%)`,
           }}
         />
 
-        {/* 3D Cyber Perspective Floor */}
+        {/* Perspective Cyber Floor (Hardware rendered) */}
         <div
-          className="absolute inset-0 bg-[linear-gradient(to_right,#06b6d415_1px,transparent_1px),linear-gradient(to_bottom,#06b6d415_1px,transparent_1px)] bg-[size:48px_48px] pointer-events-none"
+          className="absolute inset-0 bg-[linear-gradient(to_right,#06b6d412_1px,transparent_1px),linear-gradient(to_bottom,#06b6d412_1px,transparent_1px)] bg-[size:50px_50px]"
           style={{
-            transform: 'perspective(600px) rotateX(60deg) translateY(120px)',
+            transform: 'perspective(500px) rotateX(65deg) translateY(100px)',
             transformOrigin: 'bottom center',
-            opacity: isFlyby ? 0.2 : 0.6,
-            transition: 'opacity 0.4s ease',
+            willChange: 'transform',
           }}
         />
 
-        {/* Dynamic Hyperspace Stars & Speed Streaks during flyby */}
+        {/* Lightweight Warp Lines (Active only during hypersonic flyby) */}
         {isFlyby && (
-          <div className="absolute inset-0">
-            {Array.from({ length: 30 }).map((_, i) => {
-              const angle = (i / 30) * 360;
-              return (
-                <motion.div
-                  key={i}
-                  initial={{ scale: 0.1, opacity: 0 }}
-                  animate={{ scale: [0.1, 4], opacity: [0, 1, 0] }}
-                  transition={{
-                    duration: 0.6,
-                    repeat: Infinity,
-                    delay: (i % 6) * 0.08,
-                    ease: 'easeIn',
-                  }}
-                  className="absolute top-1/2 left-1/2 w-1.5 h-32 rounded-full"
-                  style={{
-                    backgroundColor: i % 2 === 0 ? '#38bdf8' : '#c084fc',
-                    transformOrigin: 'center top',
-                    transform: `rotate(${angle}deg) translateY(-250px)`,
-                    boxShadow: '0 0 16px #38bdf8',
-                  }}
-                />
-              );
-            })}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            {[0, 45, 90, 135, 180, 225, 270, 315].map((angle) => (
+              <div
+                key={angle}
+                className="absolute w-[2px] h-[40vh] bg-gradient-to-t from-cyan-400 to-transparent"
+                style={{
+                  transformOrigin: 'center center',
+                  transform: `rotate(${angle}deg) translateY(-80px)`,
+                  animation: 'warpPulse 0.3s ease-out infinite',
+                }}
+              />
+            ))}
           </div>
-        )}
-
-        {/* Sonic Boom Shockwave Rings expanding from center */}
-        {isAfterburnersOrLater && (
-          <>
-            <motion.div
-              initial={{ scale: 0.2, opacity: 0.9 }}
-              animate={{ scale: 3.5, opacity: 0 }}
-              transition={{ duration: 1.1, repeat: Infinity, ease: 'easeOut' }}
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full border-2 border-brand-cyan/60 pointer-events-none shadow-[0_0_30px_#06b6d4]"
-            />
-            <motion.div
-              initial={{ scale: 0.3, opacity: 0.8 }}
-              animate={{ scale: 4.0, opacity: 0 }}
-              transition={{ duration: 1.1, repeat: Infinity, delay: 0.3, ease: 'easeOut' }}
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full border border-purple-400/50 pointer-events-none"
-            />
-          </>
         )}
       </div>
 
-      {/* 2. TOP HUD BAR: TARGETING, MODE, SPEED READOUT & SKIP BUTTON */}
+      {/* 2. TOP HUD: MINIMALIST & HARDWARE COMPOSITED */}
       <div className="absolute top-6 left-6 right-6 flex items-center justify-between z-30 pointer-events-auto">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-navy-900/90 border border-white/10 shadow-lg">
-            <Zap className="h-5 w-5 text-brand-cyan animate-pulse" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-navy-900 border border-white/10">
+            <Zap className="h-4 w-4 text-cyan-400 animate-pulse" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-mono font-bold tracking-wider text-white uppercase">
-                {phase === 'decoupling'
-                  ? 'INITIATING TRANSFORMATION PROTOCOL'
-                  : phase === 'morphing'
-                  ? 'CYBER VEHICLE -> AERO FIGHTER JET'
-                  : phase === 'afterburners'
-                  ? 'DUAL SCRAMJET AFTERBURNERS ENGAGED'
-                  : 'SUPERSONIC APPROACH: OPENING TERMINAL'}
+            <div className="text-xs font-mono font-bold tracking-wider text-white uppercase flex items-center gap-2">
+              <span>
+                {stage === 'transform'
+                  ? 'MORPHING: CAR -> JET'
+                  : stage === 'ignite'
+                  ? 'AFTERBURNERS LOCKED'
+                  : 'MACH 5 APPROACH'}
               </span>
-              <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400 animate-ping" />
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
             </div>
-            <div className="flex items-center gap-3 text-[11px] font-mono text-slate-400">
-              <span className="text-brand-cyan">DESTINATION: {destination.toUpperCase().replace('/', '')}</span>
-              <span>•</span>
-              <span className="text-purple-300">VELOCITY: {machSpeed}</span>
+            <div className="text-[11px] font-mono text-slate-400">
+              TARGET: <span style={{ color: themeHex }}>{destName}</span>
             </div>
           </div>
         </div>
 
         <button
           onClick={handleSkip}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono text-slate-300 hover:text-white transition-all shadow-md"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-mono text-slate-300 hover:text-white transition-colors"
         >
-          <FastForward className="h-3.5 w-3.5" />
-          <span>Skip to {isSend ? 'Send' : 'Receive'}</span>
+          <FastForward className="h-3 w-3" />
+          <span>Skip</span>
         </button>
       </div>
 
-      {/* 3. CENTER TRANSFORMING ENTITY (CAR -> JET -> HYPER ZOOM TO VIEWER) */}
-      <div className="relative z-20 flex items-center justify-center w-full h-full pointer-events-none">
+      {/* 3. CENTER TRANSFORMING VEHICLE: 100% GPU TRANSFORMED */}
+      <div className="relative z-20 flex items-center justify-center pointer-events-none">
         <motion.div
           animate={
             isFlyby
               ? {
-                  // Phase 4: Plane flies right into the viewer's screen!
-                  scale: [1.2, 14],
-                  z: [0, 800],
-                  y: [0, 140],
-                  opacity: [1, 1, 0.9, 0],
-                  rotateZ: isSend ? [-12, -4] : [12, 4],
+                  // Phase 3: Plane accelerates directly TOWARDS the viewer!
+                  scale: [1, 10],
+                  y: [0, 80],
+                  opacity: [1, 1, 0.7, 0],
                 }
-              : isAfterburnersOrLater
+              : isTransformed
               ? {
-                  // Phase 3: High speed hovering with slight bank towards chosen tab
-                  scale: [1, 1.18, 1.15],
-                  y: [-15, -25],
-                  rotateZ: isSend ? -10 : 10,
-                  transition: { duration: 0.6, ease: 'easeOut' },
-                }
-              : phase === 'morphing'
-              ? {
-                  // Phase 2: Mechanical morphing mid-air shake
-                  scale: [0.95, 1.08, 1],
-                  y: [10, -15],
-                  rotateZ: [0, -3, 3, 0],
-                  transition: { duration: 1.1, ease: 'easeInOut' },
+                  // Phase 2: Jet locked in mid-air bank with slight roll
+                  scale: [1, 1.08],
+                  rotateZ: isSend ? -6 : 6,
+                  y: -15,
                 }
               : {
-                  // Phase 1: Car lifts off from road
-                  y: [60, 0],
-                  scale: [0.9, 1],
-                  transition: { duration: 0.7, ease: 'easeOut' },
+                  // Phase 1: Car lifts and decouples
+                  scale: [0.95, 1],
+                  y: [20, 0],
                 }
           }
+          transition={
+            isFlyby
+              ? { duration: 0.58, ease: [0.4, 0, 0.2, 1] }
+              : { duration: 0.45, ease: 'easeOut' }
+          }
+          style={{ willChange: 'transform, opacity' }}
           className="relative flex items-center justify-center"
-          style={{ transformStyle: 'preserve-3d' }}
         >
-          {/* Glowing Aura Behind Entity */}
-          <div
-            className={`absolute w-96 h-96 rounded-full blur-3xl pointer-events-none opacity-70 transition-all duration-700 ${themeGlow}`}
-            style={{ backgroundColor: `${themeColor}40` }}
-          />
-
-          {/* TRANSFORMATION STAGE: DYNAMIC SVG MORPH */}
+          {/* Main Cyber Vehicle & Jet Composite SVG */}
           <svg
-            viewBox="0 0 600 400"
-            className="w-[340px] sm:w-[520px] md:w-[680px] lg:w-[820px] h-auto drop-shadow-[0_20px_50px_rgba(6,182,212,0.4)] overflow-visible"
+            viewBox="0 0 540 320"
+            className="w-[320px] sm:w-[480px] md:w-[620px] h-auto overflow-visible"
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
           >
             <defs>
-              <linearGradient id="tfChassis" x1="0%" y1="0%" x2="100%" y2="100%">
+              <linearGradient id="optChassis" x1="0%" y1="0%" x2="100%" y2="100%">
                 <stop offset="0%" stopColor="#1e293b" />
-                <stop offset="40%" stopColor="#0f172a" />
-                <stop offset="70%" stopColor="#090d16" />
+                <stop offset="50%" stopColor="#0f172a" />
                 <stop offset="100%" stopColor="#020617" />
               </linearGradient>
 
-              <linearGradient id="tfJetMetal" x1="0%" y1="0%" x2="100%" y2="50%">
-                <stop offset="0%" stopColor="#334155" />
-                <stop offset="35%" stopColor="#1e293b" />
-                <stop offset="75%" stopColor="#0f172a" />
-                <stop offset="100%" stopColor="#020617" />
-              </linearGradient>
-
-              <linearGradient id="tfNeonGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+              <linearGradient id="optCyan" x1="0%" y1="0%" x2="100%" y2="0%">
                 <stop offset="0%" stopColor="#8b5cf6" />
-                <stop offset="50%" stopColor="#06b6d4" />
-                <stop offset="100%" stopColor="#38bdf8" />
+                <stop offset="100%" stopColor="#06b6d4" />
               </linearGradient>
 
-              <linearGradient id="tfThrusterFlame" x1="0%" y1="50%" x2="100%" y2="50%">
+              <linearGradient id="optFlame" x1="0%" y1="50%" x2="100%" y2="50%">
                 <stop offset="0%" stopColor="#ffffff" />
-                <stop offset="25%" stopColor="#38bdf8" />
-                <stop offset="60%" stopColor="#8b5cf6" />
+                <stop offset="30%" stopColor="#38bdf8" />
+                <stop offset="70%" stopColor="#8b5cf6" />
                 <stop offset="100%" stopColor="transparent" />
               </linearGradient>
-
-              <radialGradient id="plasmaCore" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="#ffffff" />
-                <stop offset="40%" stopColor="#22d3ee" />
-                <stop offset="80%" stopColor="#8b5cf6" />
-                <stop offset="100%" stopColor="transparent" />
-              </radialGradient>
             </defs>
 
-            {/* --- JET WINGS (Unfold outward like a Transformer as morphing engages) --- */}
+            {/* --- TRANSFORMER JET DELTA WINGS (Folds out on GPU scale) --- */}
             <motion.g
-              initial={{ scale: 0, opacity: 0 }}
+              initial={{ scaleX: 0, opacity: 0 }}
               animate={
-                isMorphingOrLater
-                  ? { scale: 1, opacity: 1 }
-                  : { scale: 0, opacity: 0 }
+                isTransformed
+                  ? { scaleX: 1, opacity: 1 }
+                  : { scaleX: 0, opacity: 0 }
               }
-              transition={{
-                type: 'spring',
-                stiffness: 75,
-                damping: 14,
-                delay: 0.1,
-              }}
-              style={{ transformOrigin: '300px 200px' }}
+              transition={{ duration: 0.4, ease: 'easeOut' }}
+              style={{ transformOrigin: '270px 160px', willChange: 'transform' }}
             >
               {/* Left Delta Wing */}
               <polygon
-                points="240,190 70,270 120,310 240,240"
-                fill="url(#tfJetMetal)"
-                stroke="url(#tfNeonGlow)"
+                points="220,150 70,220 120,260 220,190"
+                fill="url(#optChassis)"
+                stroke="#06b6d4"
                 strokeWidth="2.5"
               />
-              {/* Left Wing Plasma Edge Slat */}
-              <line
-                x1="70"
-                y1="270"
-                x2="120"
-                y2="310"
-                stroke="#06b6d4"
-                strokeWidth="4"
-                strokeLinecap="round"
-                className="filter drop-shadow-[0_0_8px_#06b6d4]"
-              />
-              {/* Left Missile/Sensor Pod */}
-              <rect
-                x="85"
-                y="280"
-                width="36"
-                height="8"
-                rx="4"
-                fill="#0f172a"
-                stroke="#8b5cf6"
-                strokeWidth="1.5"
-                transform="rotate(-25 85 280)"
-              />
+              <line x1="70" y1="220" x2="120" y2="260" stroke="#38bdf8" strokeWidth="4" strokeLinecap="round" />
 
               {/* Right Delta Wing */}
               <polygon
-                points="360,190 530,270 480,310 360,240"
-                fill="url(#tfJetMetal)"
-                stroke="url(#tfNeonGlow)"
+                points="320,150 470,220 420,260 320,190"
+                fill="url(#optChassis)"
+                stroke="#06b6d4"
                 strokeWidth="2.5"
               />
-              {/* Right Wing Plasma Edge Slat */}
-              <line
-                x1="530"
-                y1="270"
-                x2="480"
-                y2="310"
-                stroke="#06b6d4"
-                strokeWidth="4"
-                strokeLinecap="round"
-                className="filter drop-shadow-[0_0_8px_#06b6d4]"
-              />
-              {/* Right Missile/Sensor Pod */}
-              <rect
-                x="475"
-                y="275"
-                width="36"
-                height="8"
-                rx="4"
-                fill="#0f172a"
-                stroke="#8b5cf6"
-                strokeWidth="1.5"
-                transform="rotate(25 475 275)"
-              />
+              <line x1="470" y1="220" x2="420" y2="260" stroke="#38bdf8" strokeWidth="4" strokeLinecap="round" />
 
-              {/* Twin Canted Stealth Tail Fins */}
-              <polygon
-                points="210,180 180,90 220,110 240,180"
-                fill="#0f172a"
-                stroke="#38bdf8"
-                strokeWidth="2"
-              />
-              <polygon
-                points="390,180 420,90 380,110 360,180"
-                fill="#0f172a"
-                stroke="#38bdf8"
-                strokeWidth="2"
-              />
+              {/* Twin Tail Canted Stabilizers */}
+              <polygon points="190,140 170,70 200,85 215,140" fill="#0f172a" stroke="#8b5cf6" strokeWidth="2" />
+              <polygon points="350,140 370,70 340,85 325,140" fill="#0f172a" stroke="#8b5cf6" strokeWidth="2" />
             </motion.g>
 
-            {/* --- CAR WHEELS MORPH INTO TURBOJET ENGINES --- */}
-            {/* Front & Rear Wheels folding 90 deg inward into Turbine Intakes */}
+            {/* --- CAR WHEELS MORPHING INTO TURBINES --- */}
             <motion.g
               animate={
-                isMorphingOrLater
-                  ? { y: -20, scaleY: 0.5, scaleX: 1.2 }
-                  : { y: 0, scaleY: 1, scaleX: 1 }
+                isTransformed
+                  ? { scaleY: 0.4, y: -10, opacity: 0.9 }
+                  : { scaleY: 1, y: 0, opacity: 1 }
               }
-              transition={{ duration: 0.7 }}
+              transition={{ duration: 0.35 }}
+              style={{ willChange: 'transform' }}
             >
-              {/* Left Turbine / Wheel */}
-              <g transform="translate(190, 230)">
-                <circle cx="0" cy="0" r="28" fill="#020617" stroke="#06b6d4" strokeWidth="3" />
-                {isMorphingOrLater ? (
-                  // Spinning Glowing Jet Turbine Blades
-                  <motion.g
-                    animate={{ rotate: 1800 }}
-                    transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-                  >
-                    <circle cx="0" cy="0" r="14" fill="#0f172a" stroke="#8b5cf6" strokeWidth="2" />
-                    <line x1="-16" y1="0" x2="16" y2="0" stroke="#38bdf8" strokeWidth="2" />
-                    <line x1="0" y1="-16" x2="0" y2="16" stroke="#38bdf8" strokeWidth="2" />
-                    <line x1="-11" y1="-11" x2="11" y2="11" stroke="#22d3ee" strokeWidth="2" />
-                    <line x1="11" y1="-11" x2="-11" y2="11" stroke="#22d3ee" strokeWidth="2" />
-                    <circle cx="0" cy="0" r="5" fill="#ffffff" />
-                  </motion.g>
-                ) : (
-                  // Car Rim
-                  <circle cx="0" cy="0" r="18" fill="#0f172a" stroke="#334155" strokeWidth="2" />
-                )}
-              </g>
+              {/* Left Wheel / Intake */}
+              <circle cx="170" cy="190" r="24" fill="#020617" stroke="#06b6d4" strokeWidth="2.5" />
+              <circle cx="170" cy="190" r="10" fill="#0f172a" stroke="#38bdf8" strokeWidth="1.5" />
 
-              {/* Right Turbine / Wheel */}
-              <g transform="translate(410, 230)">
-                <circle cx="0" cy="0" r="28" fill="#020617" stroke="#06b6d4" strokeWidth="3" />
-                {isMorphingOrLater ? (
-                  // Spinning Glowing Jet Turbine Blades
-                  <motion.g
-                    animate={{ rotate: 1800 }}
-                    transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-                  >
-                    <circle cx="0" cy="0" r="14" fill="#0f172a" stroke="#8b5cf6" strokeWidth="2" />
-                    <line x1="-16" y1="0" x2="16" y2="0" stroke="#38bdf8" strokeWidth="2" />
-                    <line x1="0" y1="-16" x2="0" y2="16" stroke="#38bdf8" strokeWidth="2" />
-                    <line x1="-11" y1="-11" x2="11" y2="11" stroke="#22d3ee" strokeWidth="2" />
-                    <line x1="11" y1="-11" x2="-11" y2="11" stroke="#22d3ee" strokeWidth="2" />
-                    <circle cx="0" cy="0" r="5" fill="#ffffff" />
-                  </motion.g>
-                ) : (
-                  // Car Rim
-                  <circle cx="0" cy="0" r="18" fill="#0f172a" stroke="#334155" strokeWidth="2" />
-                )}
-              </g>
+              {/* Right Wheel / Intake */}
+              <circle cx="370" cy="190" r="24" fill="#020617" stroke="#06b6d4" strokeWidth="2.5" />
+              <circle cx="370" cy="190" r="10" fill="#0f172a" stroke="#38bdf8" strokeWidth="1.5" />
             </motion.g>
 
-            {/* --- MAIN FUSELAGE / COCKPIT MORPH --- */}
-            {/* The car body morphs into a supersonic needle nose fighter jet */}
-            <motion.path
-              animate={
-                isMorphingOrLater
-                  ? {
-                      d: 'M300 45 L340 140 L370 200 L380 270 L300 290 L220 270 L230 200 L260 140 Z',
-                    }
-                  : {
-                      d: 'M300 110 L440 150 L480 210 L480 260 L300 260 L120 260 L120 210 L160 150 Z',
-                    }
-              }
-              transition={{
-                duration: 0.9,
-                ease: [0.22, 1, 0.36, 1],
-              }}
-              fill="url(#tfChassis)"
-              stroke="url(#tfNeonGlow)"
+            {/* --- MAIN AERODYNAMIC BODY (AERO FUSELAGE) --- */}
+            <polygon
+              points="270,40 310,120 330,170 340,230 270,250 200,230 210,170 230,120"
+              fill="url(#optChassis)"
+              stroke="url(#optCyan)"
               strokeWidth="2.5"
             />
 
-            {/* Supersonic Jet Cockpit Canopy with Glowing HUD */}
-            <motion.polygon
-              animate={
-                isMorphingOrLater
-                  ? {
-                      points: '300,90 322,170 300,195 278,170',
-                      opacity: 1,
-                    }
-                  : {
-                      points: '300,140 360,180 300,200 240,180',
-                      opacity: 0.8,
-                    }
-              }
-              transition={{ duration: 0.9 }}
-              fill="#0ea5e9"
-              fillOpacity="0.45"
+            {/* Cockpit Canopy */}
+            <polygon
+              points="270,75 290,140 270,165 250,140"
+              fill="#0284c7"
+              fillOpacity="0.4"
               stroke="#22d3ee"
               strokeWidth="2"
             />
+            <circle cx="270" cy="120" r="3" fill="#ffffff" />
 
-            {/* Cockpit Reticle Target Dot */}
-            <circle cx="300" cy="150" r="4" fill="#ffffff" className="animate-ping" />
-
-            {/* Transformer Mechanical Seam Accents */}
-            <line x1="285" y1="210" x2="315" y2="210" stroke="#8b5cf6" strokeWidth="2" strokeDasharray="3 3" />
-            <line x1="300" y1="215" x2="300" y2="260" stroke="#06b6d4" strokeWidth="2" />
-
-            {/* --- DUAL SCRAMJET AFTERBURNER EXHAUST (Firing during afterburners & flyby!) --- */}
-            {isAfterburnersOrLater && (
+            {/* --- SCRAMJET AFTERBURNER EXHAUST (Hardware Scale) --- */}
+            {isTransformed && (
               <motion.g
-                initial={{ opacity: 0, scaleY: 0 }}
-                animate={{ opacity: [0.9, 1, 0.85], scaleY: [1, 1.4, 1.2] }}
-                transition={{ duration: 0.25, repeat: Infinity }}
-                style={{ transformOrigin: '300px 290px' }}
+                initial={{ scaleY: 0 }}
+                animate={{ scaleY: [1, 1.25, 1] }}
+                transition={{ duration: 0.2, repeat: Infinity }}
+                style={{ transformOrigin: '270px 245px', willChange: 'transform' }}
               >
-                {/* Left Thruster Flame Cones */}
-                <polygon
-                  points="255,275 275,275 265,370"
-                  fill="url(#tfThrusterFlame)"
-                  className="filter drop-shadow-[0_0_15px_#38bdf8]"
-                />
-                <circle cx="265" cy="275" r="9" fill="url(#plasmaCore)" />
+                {/* Left Thruster Plume */}
+                <polygon points="230,235 250,235 240,310" fill="url(#optFlame)" />
+                <circle cx="240" cy="235" r="7" fill="#38bdf8" />
 
-                {/* Right Thruster Flame Cones */}
-                <polygon
-                  points="325,275 345,275 335,370"
-                  fill="url(#tfThrusterFlame)"
-                  className="filter drop-shadow-[0_0_15px_#38bdf8]"
-                />
-                <circle cx="335" cy="275" r="9" fill="url(#plasmaCore)" />
-
-                {/* Shock Diamonds Inside Exhaust */}
-                <polygon points="265,300 262,315 265,330 268,315" fill="#ffffff" />
-                <polygon points="335,300 332,315 335,330 338,315" fill="#ffffff" />
+                {/* Right Thruster Plume */}
+                <polygon points="290,235 310,235 300,310" fill="url(#optFlame)" />
+                <circle cx="300" cy="235" r="7" fill="#38bdf8" />
               </motion.g>
             )}
 
-            {/* Cyber Callout Decal on Fuselage */}
+            {/* Aero Registration Decal */}
             <text
-              x="300"
-              y="245"
+              x="270"
+              y="205"
               textAnchor="middle"
               fill="#94a3b8"
-              fontSize="10"
+              fontSize="9"
               fontFamily="monospace"
               fontWeight="bold"
-              letterSpacing="3"
+              letterSpacing="2"
             >
-              {isSend ? 'TX-AERO' : 'RX-AERO'}
+              {isSend ? 'DROP-TX' : 'DROP-RX'}
             </text>
           </svg>
         </motion.div>
       </div>
 
-      {/* 4. BOTTOM STATUS BADGE & PROGRESSION INDICATOR */}
-      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-30 pointer-events-none text-center">
-        <div className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-navy-900/90 border border-white/10 shadow-2xl backdrop-blur-xl">
-          <Navigation className="h-4 w-4 text-brand-cyan animate-spin" />
-          <span className="text-xs font-mono text-slate-200">
-            {phase === 'decoupling' && 'DEPLOYING TRANSFORMER HYDRAULICS...'}
-            {phase === 'morphing' && 'CONVERTING CAR CHASSIS TO FIGHTER JET...'}
-            {phase === 'afterburners' && 'LOCKING VECTOR TO DESTINATION...'}
-            {phase === 'hyperspace_flyby' && `HYPERSONIC ENGAGED — APPROACHING ${destination.toUpperCase().replace('/', '')}!`}
+      {/* 4. BOTTOM STATUS PILL */}
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-navy-900 border border-white/10 shadow-lg">
+          <Navigation className="h-3.5 w-3.5 text-cyan-400 animate-spin" />
+          <span className="text-xs font-mono text-slate-300">
+            {stage === 'transform' && 'RECONFIGURING AIRFRAME...'}
+            {stage === 'ignite' && 'AFTERBURNERS AT MAXIMUM THRUST...'}
+            {stage === 'flyby' && 'FLYING TO DESTINATION...'}
           </span>
         </div>
       </div>
 
-      {/* 5. CAMERA FLASH TRANSITION BURST UPON FLYING THROUGH SCREEN */}
-      <AnimatePresence>
-        {isFlyby && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 0.4, 1] }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.65, delay: 0.1 }}
-            className="absolute inset-0 pointer-events-none z-50 bg-gradient-to-t from-cyan-400/40 via-white to-purple-500/40"
-          />
-        )}
-      </AnimatePresence>
+      {/* 5. LIGHTWEIGHT CAMERA FLASH TRANSITION (Instant GPU Opacity) */}
+      {isFlyby && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 0.3, 0.9] }}
+          transition={{ duration: 0.5, ease: 'easeIn' }}
+          className="absolute inset-0 pointer-events-none z-50 bg-gradient-to-t from-cyan-400/30 via-white to-purple-500/30"
+          style={{ willChange: 'opacity' }}
+        />
+      )}
     </div>
   );
 }

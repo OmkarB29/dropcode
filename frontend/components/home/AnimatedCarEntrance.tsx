@@ -242,7 +242,7 @@ export function AnimatedCarEntrance() {
               {/* SVG CYBER SPORTS CAR GRAPHICS */}
               <svg
                 viewBox="0 0 540 160"
-                className="w-[320px] sm:w-[460px] md:w-[540px] h-auto drop-shadow-[0_12px_25px_rgba(6,182,212,0.35)] relative z-10"
+                className="w-[320px] sm:w-[460px] md:w-[540px] h-auto relative z-10"
                 fill="none"
                 xmlns="http://www.w3.org/2000/svg"
               >
@@ -291,7 +291,6 @@ export function AnimatedCarEntrance() {
                   stroke="#06b6d4"
                   strokeWidth="3.5"
                   strokeLinecap="round"
-                  className="filter drop-shadow-[0_0_8px_#06b6d4]"
                 />
 
                 {/* Rear Spoiler */}
@@ -386,7 +385,7 @@ export function AnimatedCarEntrance() {
                 />
 
                 {/* 6. FRONT HEADLIGHTS (Dual Cyber Beam Projectors) */}
-                <g className="filter drop-shadow-[0_0_10px_#22d3ee]">
+                <g>
                   <polygon
                     points="485,96 520,102 510,108 480,100"
                     fill="#e0f2fe"
@@ -396,7 +395,7 @@ export function AnimatedCarEntrance() {
                 </g>
 
                 {/* 7. REAR TAILLIGHT (Aero Cyber Lightbar) */}
-                <g className="filter drop-shadow-[0_0_8px_#ef4444]">
+                <g>
                   <line x1="25" y1="92" x2="35" y2="120" stroke="#ef4444" strokeWidth="4" strokeLinecap="round" />
                   <line x1="28" y1="95" x2="36" y2="115" stroke="#fca5a5" strokeWidth="2" />
                 </g>
