@@ -11,8 +11,10 @@ import {
   Sparkles,
   Zap,
   FastForward,
+  Plane,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { TransformerSequence } from './TransformerSequence';
 
 export function AnimatedCarEntrance() {
   // Animation state: 'driving' -> 'stopped' -> 'doors_open' -> 'cards_revealed'
@@ -21,6 +23,28 @@ export function AnimatedCarEntrance() {
   >('driving');
 
   const [hasPlayedOnce, setHasPlayedOnce] = useState(false);
+  const [transformerTarget, setTransformerTarget] = useState<
+    '/send' | '/receive' | null
+  >(null);
+
+  useEffect(() => {
+    // Listen for custom trigger events from Header or other navigation components
+    const handleTriggerEvent = (e: Event) => {
+      const custom = e as CustomEvent<{ destination: '/send' | '/receive' }>;
+      if (custom.detail?.destination) {
+        setTransformerTarget(custom.detail.destination);
+      }
+    };
+
+    window.addEventListener('dropcode:trigger-transform', handleTriggerEvent);
+    return () => {
+      window.removeEventListener('dropcode:trigger-transform', handleTriggerEvent);
+    };
+  }, []);
+
+  const handleTriggerTransform = (dest: '/send' | '/receive') => {
+    setTransformerTarget(dest);
+  };
 
   useEffect(() => {
     // Phase 1: Driving in (0 - 1.8s)
@@ -101,6 +125,45 @@ export function AnimatedCarEntrance() {
               <span>Replay Entrance</span>
             </Button>
           )}
+        </div>
+      </div>
+
+      {/* AEROSPACE MODE TABS: SEND & RECEIVE */}
+      <div className="flex items-center justify-center mb-6">
+        <div className="inline-flex items-center p-1.5 rounded-2xl bg-navy-900/90 border border-white/10 backdrop-blur-xl shadow-xl gap-2">
+          <button
+            onClick={() => handleTriggerTransform('/send')}
+            className="group flex items-center gap-2.5 px-4 sm:px-6 py-2.5 rounded-xl font-medium text-xs sm:text-sm text-slate-200 hover:text-white bg-gradient-to-r hover:from-brand-violet/25 hover:to-brand-violet/10 border border-transparent hover:border-brand-violet/40 transition-all duration-300 active:scale-95"
+          >
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-violet/20 text-violet-300 group-hover:scale-110 group-hover:bg-brand-violet group-hover:text-white transition-all shadow-md">
+              <UploadCloud className="h-4 w-4" />
+            </div>
+            <div className="text-left">
+              <div className="font-semibold text-white group-hover:text-violet-300 transition-colors flex items-center gap-1.5">
+                <span>Send Tab</span>
+                <Plane className="h-3.5 w-3.5 text-brand-violet group-hover:translate-x-0.5 -rotate-45 transition-transform" />
+              </div>
+              <div className="text-[10px] text-slate-400 font-mono">Transform to Jet &rarr;</div>
+            </div>
+          </button>
+
+          <div className="h-8 w-[1px] bg-white/10" />
+
+          <button
+            onClick={() => handleTriggerTransform('/receive')}
+            className="group flex items-center gap-2.5 px-4 sm:px-6 py-2.5 rounded-xl font-medium text-xs sm:text-sm text-slate-200 hover:text-white bg-gradient-to-r hover:from-brand-cyan/25 hover:to-brand-cyan/10 border border-transparent hover:border-brand-cyan/40 transition-all duration-300 active:scale-95"
+          >
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-cyan/20 text-cyan-300 group-hover:scale-110 group-hover:bg-brand-cyan group-hover:text-navy-900 transition-all shadow-md">
+              <Download className="h-4 w-4" />
+            </div>
+            <div className="text-left">
+              <div className="font-semibold text-white group-hover:text-cyan-300 transition-colors flex items-center gap-1.5">
+                <span>Receive Tab</span>
+                <Plane className="h-3.5 w-3.5 text-brand-cyan group-hover:translate-x-0.5 -rotate-45 transition-transform" />
+              </div>
+              <div className="text-[10px] text-slate-400 font-mono">Transform to Jet &rarr;</div>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -470,15 +533,14 @@ export function AnimatedCarEntrance() {
                 </div>
 
                 <div className="mt-8 pt-6 border-t border-white/5 flex items-center justify-between">
-                  <Link href="/send" className="w-full">
-                    <Button
-                      size="lg"
-                      className="w-full gap-2 bg-brand-violet hover:bg-brand-violet/90 text-white font-semibold text-base shadow-xl shadow-brand-violet/25 group-hover:shadow-brand-violet/40 h-13 rounded-2xl"
-                    >
-                      <span>Select Files &amp; Text</span>
-                      <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                    </Button>
-                  </Link>
+                  <Button
+                    onClick={() => handleTriggerTransform('/send')}
+                    size="lg"
+                    className="w-full gap-2 bg-brand-violet hover:bg-brand-violet/90 text-white font-semibold text-base shadow-xl shadow-brand-violet/25 group-hover:shadow-brand-violet/40 h-13 rounded-2xl"
+                  >
+                    <span>Select Files &amp; Text</span>
+                    <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                  </Button>
                 </div>
               </div>
             </motion.div>
@@ -521,19 +583,28 @@ export function AnimatedCarEntrance() {
                 </div>
 
                 <div className="mt-8 pt-6 border-t border-white/5 flex items-center justify-between">
-                  <Link href="/receive" className="w-full">
-                    <Button
-                      size="lg"
-                      className="w-full gap-2 bg-brand-cyan hover:bg-brand-cyan/90 text-navy-900 font-semibold text-base shadow-xl shadow-brand-cyan/25 group-hover:shadow-brand-cyan/40 h-13 rounded-2xl"
-                    >
-                      <span>Enter Transfer Code</span>
-                      <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                    </Button>
-                  </Link>
+                  <Button
+                    onClick={() => handleTriggerTransform('/receive')}
+                    size="lg"
+                    className="w-full gap-2 bg-brand-cyan hover:bg-brand-cyan/90 text-navy-900 font-semibold text-base shadow-xl shadow-brand-cyan/25 group-hover:shadow-brand-cyan/40 h-13 rounded-2xl"
+                  >
+                    <span>Enter Transfer Code</span>
+                    <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                  </Button>
                 </div>
               </div>
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* FULL-SCREEN TRANSFORMERS JET ANIMATION OVERLAY */}
+      <AnimatePresence>
+        {transformerTarget && (
+          <TransformerSequence
+            destination={transformerTarget}
+            onComplete={() => setTransformerTarget(null)}
+          />
         )}
       </AnimatePresence>
     </div>

@@ -16,6 +16,17 @@ export function Header() {
     { href: '/receive', label: 'Receive', icon: Download },
   ];
 
+  const handleNavClick = (e: React.MouseEvent, href: string) => {
+    if (pathname === '/' && (href === '/send' || href === '/receive')) {
+      e.preventDefault();
+      window.dispatchEvent(
+        new CustomEvent('dropcode:trigger-transform', {
+          detail: { destination: href as '/send' | '/receive' },
+        })
+      );
+    }
+  };
+
   return (
     <header className="sticky top-0 z-40 w-full border-b border-white/[0.06] bg-navy-900/75 backdrop-blur-xl">
       <div className="container mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
@@ -40,7 +51,11 @@ export function Header() {
             const isActive = pathname === link.href;
             const Icon = link.icon;
             return (
-              <Link key={link.href} href={link.href}>
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={(e) => handleNavClick(e, link.href)}
+              >
                 <Button
                   variant={isActive ? 'secondary' : 'ghost'}
                   size="sm"
