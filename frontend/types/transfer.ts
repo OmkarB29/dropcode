@@ -40,6 +40,14 @@ export interface DownloadedFile {
   mimeType?: string;
 }
 
+export interface ReceiverPeer {
+  id: string; // receiver socket ID
+  deviceName: string;
+  status: 'waiting' | 'approved' | 'connecting' | 'transferring' | 'completed' | 'rejected' | 'failed' | 'disconnected';
+  progress?: TransferProgress | null;
+  joinedAt: number;
+}
+
 export interface SenderState {
   state: TransferState;
   files: File[];
@@ -48,6 +56,8 @@ export interface SenderState {
   expiresAt: number | null;
   receiverDeviceName: string | null;
   progress: TransferProgress | null;
+  receivers: Record<string, ReceiverPeer>;
+  autoApprove: boolean;
   error: string | null;
 }
 

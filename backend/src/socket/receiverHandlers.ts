@@ -59,11 +59,24 @@ export function registerReceiverHandlers(io: Server, socket: Socket): void {
     const session = result.session;
     socket.join(`session:${session.id}`);
 
+    const isAutoApproved = result.autoApproved ?? true;
+    const receiverDeviceName = session.receivers?.[socket.id]?.deviceName || deviceName || 'Unknown Device';
+
     // Notify sender that a receiver joined
     if (session.senderSocketId) {
       io.to(session.senderSocketId).emit('session:receiver-joined', {
-        receiverDeviceName: session.receiverDeviceName || 'Unknown Device',
         receiverId: socket.id,
+        receiverDeviceName,
+        autoApproved: isAutoApproved,
+        receiversCount: Object.keys(session.receivers || {}).length,
+      });
+    }
+
+    // If auto-approved, immediately emit transfer:approved to receiver
+    if (isAutoApproved) {
+      socket.emit('transfer:approved', {
+        sessionId: session.id,
+        autoApproved: true,
       });
     }
 
@@ -75,6 +88,8 @@ export function registerReceiverHandlers(io: Server, socket: Socket): void {
         senderDeviceName: session.senderDeviceName,
         files: session.files,
         expiresAt: session.expiresAt,
+        receiverId: socket.id,
+        autoApproved: isAutoApproved,
       });
     }
   });
@@ -98,10 +113,12 @@ export function registerReceiverHandlers(io: Server, socket: Socket): void {
       return;
     }
 
-    // Inform sender that receiver accepted and is ready for transfer
+    // Inform sender that this specific receiver accepted and is ready for transfer
     if (session.senderSocketId) {
       io.to(session.senderSocketId).emit('receiver:accepted', {
         sessionId,
+        receiverId: socket.id,
+        receiverDeviceName: session.receivers?.[socket.id]?.deviceName || 'Peer Device',
       });
     }
 
@@ -129,11 +146,18 @@ export function registerReceiverHandlers(io: Server, socket: Socket): void {
       return;
     }
 
-    sessionManager.rejectReceiver(sessionId);
+    sessionManager.rejectReceiver(sessionId, socket.id);
 
     // Notify sender of rejection
     if (session.senderSocketId) {
-      io.to(session.senderSocketId).emit('transfer:rejected', { sessionId });
+      io.to(session.senderSocketId).emit('transfer:rejected', {
+        sessionId,
+        receiverId: socket.id,
+      });
+      io.to(session.senderSocketId).emit('session:receiver-rejected', {
+        sessionId,
+        receiverId: socket.id,
+      });
     }
 
     if (typeof callback === 'function') {
@@ -152,15 +176,28 @@ export function registerReceiverHandlers(io: Server, socket: Socket): void {
     const session = sessionStore.getById(sessionId);
     if (!session || !session.senderSocketId) return;
 
-    // Transition state to TRANSFERRING if connecting
-    if (session.state === 'CONNECTING') {
-      sessionManager.updateTransferState(sessionId, 'TRANSFERRING');
-    }
+    sessionManager.updateReceiverState(sessionId, socket.id, 'TRANSFERRING');
 
-    // Relay signal to sender
+    // Relay signal to sender with receiverId attached
     io.to(session.senderSocketId).emit('receiver:webrtc-signal', {
       sessionId,
+      receiverId: socket.id,
       signal,
+    });
+  });
+
+  /**
+   * receiver:progress
+   */
+  socket.on('receiver:progress', (data: { sessionId: string; progress: any }) => {
+    if (!data?.sessionId) return;
+    const session = sessionStore.getById(data.sessionId);
+    if (!session || !session.senderSocketId) return;
+
+    io.to(session.senderSocketId).emit('session:receiver-progress', {
+      sessionId: data.sessionId,
+      receiverId: socket.id,
+      progress: data.progress,
     });
   });
 
@@ -175,15 +212,22 @@ export function registerReceiverHandlers(io: Server, socket: Socket): void {
     }
 
     const { sessionId } = parsed.data;
-    const result = sessionManager.completeTransfer(sessionId);
+    sessionManager.completeReceiverTransfer(sessionId, socket.id);
 
     const session = sessionStore.getById(sessionId);
     if (session && session.senderSocketId) {
-      io.to(session.senderSocketId).emit('transfer:completed', { sessionId });
+      io.to(session.senderSocketId).emit('transfer:completed', {
+        sessionId,
+        receiverId: socket.id,
+      });
+      io.to(session.senderSocketId).emit('session:receiver-completed', {
+        sessionId,
+        receiverId: socket.id,
+      });
     }
 
     if (typeof callback === 'function') {
-      callback({ success: result.success });
+      callback({ success: true });
     }
   });
 }

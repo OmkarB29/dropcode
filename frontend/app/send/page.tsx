@@ -2,13 +2,12 @@
 
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowRight, Sparkles, AlertCircle, UploadCloud, FileText } from 'lucide-react';
+import { ArrowRight, Sparkles, AlertCircle, UploadCloud, FileText, Users } from 'lucide-react';
 import { useSenderFlow } from '@/hooks/useSenderFlow';
 import { FileDropZone } from '@/components/send/FileDropZone';
 import { TextShareZone } from '@/components/send/TextShareZone';
 import { FileList } from '@/components/send/FileList';
 import { TransferCode } from '@/components/send/TransferCode';
-import { ReceiverApproval } from '@/components/send/ReceiverApproval';
 import { TransferStatus } from '@/components/send/TransferStatus';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -19,7 +18,8 @@ export default function SendPage() {
     files,
     transferCode,
     expiresAt,
-    receiverDeviceName,
+    receivers,
+    autoApprove,
     progress,
     error,
     addFiles,
@@ -30,22 +30,21 @@ export default function SendPage() {
     createSession,
     approveReceiver,
     rejectReceiver,
+    setAutoApprove,
     cancelTransfer,
     reset,
   } = useSenderFlow();
 
   const isSelectingOrIdle = state === 'IDLE' || state === 'SELECTING_FILES';
-  const isWaitingForReceiver = state === 'SESSION_CREATED' || state === 'WAITING_FOR_RECEIVER';
-  const isReceiverRequested = state === 'RECEIVER_REQUESTED';
-  const isTransferringOrConnecting =
-    state === 'RECEIVER_APPROVED' ||
-    state === 'CONNECTING' ||
-    state === 'TRANSFERRING' ||
-    state === 'COMPLETED' ||
-    state === 'FAILED' ||
-    state === 'EXPIRED' ||
-    state === 'CANCELLED' ||
-    state === 'REJECTED';
+  const isLiveSharing =
+    (state === 'SESSION_CREATED' ||
+      state === 'WAITING_FOR_RECEIVER' ||
+      state === 'RECEIVER_REQUESTED' ||
+      state === 'RECEIVER_APPROVED' ||
+      state === 'CONNECTING' ||
+      state === 'TRANSFERRING') &&
+    Boolean(transferCode);
+  const isTerminal = state === 'CANCELLED' || state === 'EXPIRED' || state === 'FAILED';
 
   return (
     <div className="container relative mx-auto max-w-4xl px-4 sm:px-6 py-10 sm:py-16">
@@ -57,13 +56,13 @@ export default function SendPage() {
       <div className="text-center mb-10">
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-violet/15 border border-brand-violet/30 text-xs font-medium text-violet-300 mb-3">
           <Sparkles className="h-3.5 w-3.5 text-brand-cyan" />
-          <span>Encrypted Peer-to-Peer Transfer</span>
+          <span>Encrypted Multi-Peer Transfer</span>
         </div>
         <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-          Send Files &amp; Text Directly
+          Share Files &amp; Text with Multiple People
         </h1>
         <p className="mt-2 text-sm sm:text-base text-slate-400 max-w-md mx-auto">
-          Share files, documents, links, or text snippets with a temporary 4-digit PIN. No cloud storage required.
+          Generate a PIN code. Anyone with the code can access and download your files or text at the same time.
         </p>
       </div>
 
@@ -130,8 +129,9 @@ export default function SendPage() {
                     onClick={() => createSession()}
                     className="w-full gap-2 bg-brand-violet hover:bg-brand-violet/90 text-white font-semibold text-base shadow-xl shadow-brand-violet/30 h-14 rounded-2xl"
                   >
-                    <span>Generate Transfer Code ({files.length} item{files.length > 1 ? 's' : ''})</span>
-                    <ArrowRight className="h-5 w-5" />
+                    <Users className="h-5 w-5" />
+                    <span>Generate Multi-Share Code ({files.length} item{files.length > 1 ? 's' : ''})</span>
+                    <ArrowRight className="h-5 w-5 ml-1" />
                   </Button>
                 </div>
               </div>
@@ -139,43 +139,33 @@ export default function SendPage() {
           </motion.div>
         )}
 
-        {/* Step 2: WAITING FOR RECEIVER (CODE DISPLAY) */}
-        {isWaitingForReceiver && transferCode && (
+        {/* Step 2: LIVE MULTI-PEER SHARING STATION */}
+        {isLiveSharing && transferCode && (
           <motion.div
-            key="step-waiting-code"
+            key="step-live-sharing"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
+            className="w-full"
           >
             <TransferCode
               code={transferCode}
               expiresAt={expiresAt}
+              fileCount={files.length}
+              receivers={receivers}
+              autoApprove={autoApprove}
+              onSetAutoApprove={setAutoApprove}
+              onApprovePeer={approveReceiver}
+              onRejectPeer={rejectReceiver}
               onCancel={cancelTransfer}
             />
           </motion.div>
         )}
 
-        {/* Step 3: RECEIVER REQUESTED (APPROVAL DIALOG) */}
-        {isReceiverRequested && (
+        {/* Step 3: TERMINAL STATUS (EXPIRED / CANCELLED / FAILED) */}
+        {isTerminal && (
           <motion.div
-            key="step-receiver-requested"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-          >
-            <ReceiverApproval
-              deviceName={receiverDeviceName || 'Remote Peer'}
-              fileCount={files.length}
-              onApprove={approveReceiver}
-              onReject={rejectReceiver}
-            />
-          </motion.div>
-        )}
-
-        {/* Step 4 & 5: CONNECTING / TRANSFERRING / COMPLETED / FAILED */}
-        {isTransferringOrConnecting && (
-          <motion.div
-            key="step-transferring-status"
+            key="step-terminal-status"
             initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -15 }}

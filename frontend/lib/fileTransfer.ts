@@ -429,15 +429,145 @@ export function receiveFiles(
 }
 
 /**
- * Send files over WebSocket Relay (PairDrop-style fallback)
+ * Send files over WebSocket Relay to a specific peer (PairDrop-style multi-client stream)
+ */
+export async function sendFilesViaSocketToPeer(
+  socket: any,
+  sessionId: string,
+  targetReceiverId: string,
+  files: File[],
+  onProgress: SendProgressCallback,
+  checkCancelled?: () => boolean
+): Promise<void> {
+  const totalBytes = files.reduce((acc, f) => acc + f.size, 0);
+  let totalBytesSent = 0;
+  const startTime = Date.now();
+  let lastSpeedSampleTime = startTime;
+  let lastSpeedSampleBytes = 0;
+  let currentSpeedBps = 0;
+
+  // 1. Build and send manifest
+  const manifest = createManifest(files);
+  socket.emit('relay:start', { sessionId, targetReceiverId, manifest });
+
+  await new Promise((r) => setTimeout(r, 100));
+
+  // 2. Transfer each file
+  for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
+    if (checkCancelled && checkCancelled()) {
+      throw new Error('Transfer cancelled by user');
+    }
+
+    const file = files[fileIndex];
+    const fileEntry = manifest[fileIndex];
+    let fileBytesSent = 0;
+
+    socket.emit('relay:file-start', {
+      sessionId,
+      targetReceiverId,
+      fileInfo: {
+        fileId: fileEntry.id,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type || 'application/octet-stream',
+      },
+    });
+
+    await new Promise((r) => setTimeout(r, 20));
+
+    let offset = 0;
+    while (offset < file.size) {
+      if (checkCancelled && checkCancelled()) {
+        throw new Error('Transfer cancelled by user');
+      }
+
+      const end = Math.min(offset + CHUNK_SIZE, file.size);
+      const slice = file.slice(offset, end);
+      const arrayBuffer = await slice.arrayBuffer();
+
+      // Send chunk with ack backpressure (with safety timeout)
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          resolve(); // Resolve to prevent freezing
+        }, 5000);
+        socket.emit('relay:chunk', { sessionId, targetReceiverId, chunk: arrayBuffer }, (res?: any) => {
+          clearTimeout(timeout);
+          if (res?.error) {
+            reject(new Error(res.error));
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      const chunkSize = arrayBuffer.byteLength;
+      offset += chunkSize;
+      fileBytesSent += chunkSize;
+      totalBytesSent += chunkSize;
+
+      const now = Date.now();
+      const elapsedSinceSample = (now - lastSpeedSampleTime) / 1000;
+      if (elapsedSinceSample >= 0.25 || offset >= file.size) {
+        const bytesSinceSample = totalBytesSent - lastSpeedSampleBytes;
+        const instantaneousSpeed = bytesSinceSample / elapsedSinceSample;
+        currentSpeedBps =
+          currentSpeedBps === 0
+            ? instantaneousSpeed
+            : currentSpeedBps * 0.7 + instantaneousSpeed * 0.3;
+
+        lastSpeedSampleTime = now;
+        lastSpeedSampleBytes = totalBytesSent;
+      }
+
+      const remainingBytes = Math.max(0, totalBytes - totalBytesSent);
+      const eta = currentSpeedBps > 0 ? remainingBytes / currentSpeedBps : 0;
+      const fileProgress = file.size > 0 ? Math.min(100, Math.round((fileBytesSent / file.size) * 100)) : 100;
+      const overallProgress = totalBytes > 0 ? Math.min(100, Math.round((totalBytesSent / totalBytes) * 100)) : 100;
+
+      onProgress({
+        currentFileIndex: fileIndex,
+        currentFileName: file.name,
+        currentFileProgress: fileProgress,
+        overallProgress: overallProgress,
+        bytesTransferred: totalBytesSent,
+        totalBytes: totalBytes,
+        speedBps: currentSpeedBps,
+        estimatedSecondsRemaining: eta,
+      });
+    }
+
+    socket.emit('relay:file-end', { sessionId, targetReceiverId, fileId: fileEntry.id });
+    await new Promise((r) => setTimeout(r, 50));
+  }
+
+  socket.emit('relay:complete', { sessionId, targetReceiverId });
+
+  onProgress({
+    currentFileIndex: files.length - 1,
+    currentFileName: files[files.length - 1]?.name || '',
+    currentFileProgress: 100,
+    overallProgress: 100,
+    bytesTransferred: totalBytes,
+    totalBytes: totalBytes,
+    speedBps: 0,
+    estimatedSecondsRemaining: 0,
+  });
+}
+
+/**
+ * Send files over WebSocket Relay (PairDrop-style fallback, backward-compatible)
  */
 export async function sendFilesViaSocket(
   socket: any,
   sessionId: string,
   files: File[],
   onProgress: SendProgressCallback,
-  checkCancelled?: () => boolean
+  checkCancelled?: () => boolean,
+  targetReceiverId?: string
 ): Promise<void> {
+  if (targetReceiverId) {
+    return sendFilesViaSocketToPeer(socket, sessionId, targetReceiverId, files, onProgress, checkCancelled);
+  }
   const totalBytes = files.reduce((acc, f) => acc + f.size, 0);
   let totalBytesSent = 0;
   const startTime = Date.now();

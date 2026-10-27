@@ -29,6 +29,9 @@ export class SessionStore extends EventEmitter {
   }
 
   public createSession(session: Session): Session {
+    session.receivers = session.receivers || {};
+    session.autoApprove = session.autoApprove ?? true;
+
     this.sessions.set(session.id, session);
     this.codeToId.set(session.code.toUpperCase(), session.id);
 
@@ -37,6 +40,9 @@ export class SessionStore extends EventEmitter {
     }
     if (session.receiverSocketId) {
       this.mapSocket(session.receiverSocketId, session.id, 'receiver');
+    }
+    for (const receiverId of Object.keys(session.receivers)) {
+      this.mapSocket(receiverId, session.id, 'receiver');
     }
 
     return session;
@@ -112,6 +118,11 @@ export class SessionStore extends EventEmitter {
     if (session.receiverSocketId) {
       this.unmapSocket(session.receiverSocketId);
     }
+    if (session.receivers) {
+      for (const receiverId of Object.keys(session.receivers)) {
+        this.unmapSocket(receiverId);
+      }
+    }
 
     this.codeToId.delete(session.code.toUpperCase());
     this.notifiedExpiringSoon.delete(id);
@@ -128,7 +139,10 @@ export class SessionStore extends EventEmitter {
 
   public toPublicSession(session: Session): PublicSession {
     const { senderSocketId, receiverSocketId, ...publicFields } = session;
-    return publicFields;
+    return {
+      ...publicFields,
+      receiverCount: Object.keys(session.receivers || {}).length,
+    };
   }
 
   public mapSocket(socketId: string, sessionId: string, role: 'sender' | 'receiver'): void {

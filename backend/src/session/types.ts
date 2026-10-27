@@ -20,22 +20,50 @@ export interface FileManifestEntry {
   chunkCount: number;
 }
 
+export type ReceiverTransferState =
+  | 'REQUESTED'
+  | 'APPROVED'
+  | 'CONNECTING'
+  | 'TRANSFERRING'
+  | 'COMPLETED'
+  | 'REJECTED'
+  | 'FAILED'
+  | 'DISCONNECTED';
+
+export interface ReceiverPeerInfo {
+  id: string; // receiver socket ID
+  deviceName: string;
+  joinedAt: number;
+  approved: boolean;
+  state: ReceiverTransferState;
+  progress?: {
+    overallProgress: number;
+    speedBps: number;
+    bytesTransferred: number;
+    totalBytes: number;
+  };
+}
+
 export interface Session {
   id: string;          // internal UUID
   code: string;        // human-readable e.g. ABCD-7392
   state: TransferState;
   senderSocketId: string | null;
-  receiverSocketId: string | null;
-  receiverApproved: boolean;
+  receiverSocketId?: string | null; // legacy field (most recent receiver)
+  receiverApproved: boolean;        // legacy field
+  receivers: Record<string, ReceiverPeerInfo>; // map of receiver socket ID -> receiver info
+  autoApprove: boolean;             // auto-approve incoming peers for instant multi-share
   files: FileManifestEntry[];
   createdAt: number;
   expiresAt: number;
   senderDeviceName: string;
-  receiverDeviceName?: string;
+  receiverDeviceName?: string;     // legacy field
   connectionType: 'webrtc' | 'relay' | 'unknown';
 }
 
-export type PublicSession = Omit<Session, 'senderSocketId' | 'receiverSocketId'>;
+export type PublicSession = Omit<Session, 'senderSocketId' | 'receiverSocketId'> & {
+  receiverCount: number;
+};
 
 // Zod schemas for validation
 export const FileManifestEntrySchema = z.object({
@@ -49,6 +77,7 @@ export const FileManifestEntrySchema = z.object({
 export const CreateSessionPayloadSchema = z.object({
   deviceName: z.string().min(1).max(50),
   files: z.array(FileManifestEntrySchema).min(1),
+  autoApprove: z.boolean().default(true),
 });
 
 export type CreateSessionPayload = z.infer<typeof CreateSessionPayloadSchema>;
@@ -77,9 +106,25 @@ export const SessionIdPayloadSchema = z.object({
 
 export type SessionIdPayload = z.infer<typeof SessionIdPayloadSchema>;
 
+export const ApproveReceiverPayloadSchema = z.object({
+  sessionId: z.string().uuid(),
+  receiverId: z.string().optional(),
+});
+
+export type ApproveReceiverPayload = z.infer<typeof ApproveReceiverPayloadSchema>;
+
+export const RejectReceiverPayloadSchema = z.object({
+  sessionId: z.string().uuid(),
+  receiverId: z.string().optional(),
+});
+
+export type RejectReceiverPayload = z.infer<typeof RejectReceiverPayloadSchema>;
+
 export const WebRTCSignalPayloadSchema = z.object({
   sessionId: z.string().uuid(),
   signal: z.any(),
+  targetReceiverId: z.string().optional(),
+  receiverId: z.string().optional(),
 });
 
 export type WebRTCSignalPayload = z.infer<typeof WebRTCSignalPayloadSchema>;

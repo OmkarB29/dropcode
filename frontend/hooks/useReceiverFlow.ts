@@ -67,6 +67,16 @@ export function useReceiverFlow(initialCode: string = '') {
         ...prev,
         state: 'COMPLETED',
       }));
+      try {
+        const currentSocket = getSocket();
+        if (activeSessionIdRef.current) {
+          currentSocket.emit('receiver:transfer-complete', {
+            sessionId: activeSessionIdRef.current,
+          });
+        }
+      } catch (e) {
+        // ignore
+      }
       cleanupWebRTC();
     },
     onError: (err) => {

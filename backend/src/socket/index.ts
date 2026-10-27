@@ -43,7 +43,11 @@ export function setupSocketIO(server: HttpServer | FastifyInstance['server']): S
     if (session.senderSocketId) {
       io.to(session.senderSocketId).emit('session:expired', payload);
     }
-    if (session.receiverSocketId) {
+    if (session.receivers) {
+      for (const receiverId of Object.keys(session.receivers)) {
+        io.to(receiverId).emit('session:expired', payload);
+      }
+    } else if (session.receiverSocketId) {
       io.to(session.receiverSocketId).emit('session:expired', payload);
     }
   });
@@ -53,7 +57,11 @@ export function setupSocketIO(server: HttpServer | FastifyInstance['server']): S
     if (session.senderSocketId) {
       io.to(session.senderSocketId).emit('session:expiring-soon', payload);
     }
-    if (session.receiverSocketId) {
+    if (session.receivers) {
+      for (const receiverId of Object.keys(session.receivers)) {
+        io.to(receiverId).emit('session:expiring-soon', payload);
+      }
+    } else if (session.receiverSocketId) {
       io.to(session.receiverSocketId).emit('session:expiring-soon', payload);
     }
   });
@@ -65,19 +73,26 @@ export function setupSocketIO(server: HttpServer | FastifyInstance['server']): S
 
     socket.on('disconnect', (reason) => {
       // Check if disconnected socket was sender
-      const senderSession = sessionManager.handleSenderDisconnect(socket.id);
-      if (senderSession && senderSession.receiverSocketId) {
-        io.to(senderSession.receiverSocketId).emit('session:sender-disconnected', {
-          sessionId: senderSession.id,
-        });
+      const senderResult = sessionManager.handleSenderDisconnect(socket.id);
+      if (senderResult) {
+        const { session, receiverIds } = senderResult;
+        for (const rId of receiverIds) {
+          io.to(rId).emit('session:sender-disconnected', {
+            sessionId: session.id,
+          });
+        }
       }
 
       // Check if disconnected socket was receiver
-      const receiverSession = sessionManager.handleReceiverDisconnect(socket.id);
-      if (receiverSession && receiverSession.senderSocketId) {
-        io.to(receiverSession.senderSocketId).emit('session:receiver-disconnected', {
-          sessionId: receiverSession.id,
-        });
+      const receiverResult = sessionManager.handleReceiverDisconnect(socket.id);
+      if (receiverResult) {
+        const { session, receiverId } = receiverResult;
+        if (session.senderSocketId) {
+          io.to(session.senderSocketId).emit('session:receiver-disconnected', {
+            sessionId: session.id,
+            receiverId,
+          });
+        }
       }
     });
   });

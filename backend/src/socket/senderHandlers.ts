@@ -6,6 +6,8 @@ import { config } from '../config';
 import {
   CreateSessionPayloadSchema,
   SessionIdPayloadSchema,
+  ApproveReceiverPayloadSchema,
+  RejectReceiverPayloadSchema,
   WebRTCSignalPayloadSchema,
 } from '../session/types';
 
@@ -45,8 +47,8 @@ export function registerSenderHandlers(io: Server, socket: Socket): void {
     }
 
     try {
-      const { deviceName, files } = parsed.data;
-      const session = sessionManager.createSession(deviceName, files, socket.id);
+      const { deviceName, files, autoApprove } = parsed.data;
+      const session = sessionManager.createSession(deviceName, files, socket.id, autoApprove ?? true);
 
       socket.join(`session:${session.id}`);
 
@@ -55,6 +57,7 @@ export function registerSenderHandlers(io: Server, socket: Socket): void {
         sessionId: session.id,
         code: session.code,
         expiresAt: session.expiresAt,
+        autoApprove: session.autoApprove,
       };
 
       if (typeof callback === 'function') {
@@ -98,6 +101,7 @@ export function registerSenderHandlers(io: Server, socket: Socket): void {
         sessionId: session.id,
         code: session.code,
         state: session.state,
+        autoApprove: session.autoApprove,
         receiverApproved: session.receiverApproved,
       });
     }
@@ -107,7 +111,7 @@ export function registerSenderHandlers(io: Server, socket: Socket): void {
    * sender:approve-receiver
    */
   socket.on('sender:approve-receiver', (rawPayload: unknown, callback?: (res: any) => void) => {
-    const parsed = SessionIdPayloadSchema.safeParse(rawPayload);
+    const parsed = ApproveReceiverPayloadSchema.safeParse(rawPayload);
     if (!parsed.success) {
       if (typeof callback === 'function') {
         callback({ success: false, error: 'Invalid payload: sessionId required.' });
@@ -115,8 +119,8 @@ export function registerSenderHandlers(io: Server, socket: Socket): void {
       return;
     }
 
-    const { sessionId } = parsed.data;
-    const result = sessionManager.approveReceiver(sessionId, socket.id);
+    const { sessionId, receiverId } = parsed.data;
+    const result = sessionManager.approveReceiver(sessionId, receiverId, socket.id);
 
     if (!result.success || !result.session) {
       if (typeof callback === 'function') {
@@ -125,15 +129,21 @@ export function registerSenderHandlers(io: Server, socket: Socket): void {
       return;
     }
 
-    // Notify receiver
-    if (result.session.receiverSocketId) {
+    // Notify approved receiver(s)
+    if (result.approvedReceiverIds && result.approvedReceiverIds.length > 0) {
+      for (const id of result.approvedReceiverIds) {
+        io.to(id).emit('transfer:approved', {
+          sessionId: result.session.id,
+        });
+      }
+    } else if (result.session.receiverSocketId) {
       io.to(result.session.receiverSocketId).emit('transfer:approved', {
         sessionId: result.session.id,
       });
     }
 
     if (typeof callback === 'function') {
-      callback({ success: true });
+      callback({ success: true, approvedReceiverIds: result.approvedReceiverIds });
     }
   });
 
@@ -141,7 +151,7 @@ export function registerSenderHandlers(io: Server, socket: Socket): void {
    * sender:reject-receiver
    */
   socket.on('sender:reject-receiver', (rawPayload: unknown, callback?: (res: any) => void) => {
-    const parsed = SessionIdPayloadSchema.safeParse(rawPayload);
+    const parsed = RejectReceiverPayloadSchema.safeParse(rawPayload);
     if (!parsed.success) {
       if (typeof callback === 'function') {
         callback({ success: false, error: 'Invalid payload: sessionId required.' });
@@ -149,19 +159,23 @@ export function registerSenderHandlers(io: Server, socket: Socket): void {
       return;
     }
 
-    const { sessionId } = parsed.data;
-    const session = sessionStore.getById(sessionId);
-    if (!session) {
-      if (typeof callback === 'function') callback({ success: false, error: 'Session not found.' });
+    const { sessionId, receiverId } = parsed.data;
+    const result = sessionManager.rejectReceiver(sessionId, receiverId);
+
+    if (!result.success) {
+      if (typeof callback === 'function') callback({ success: false, error: result.error });
       return;
     }
 
-    sessionManager.rejectReceiver(sessionId);
-
-    // Notify receiver
-    if (session.receiverSocketId) {
-      io.to(session.receiverSocketId).emit('transfer:rejected', { sessionId });
-      io.to(session.receiverSocketId).emit('receiver:rejected', { sessionId });
+    // Notify receiver(s)
+    if (result.rejectedReceiverIds && result.rejectedReceiverIds.length > 0) {
+      for (const id of result.rejectedReceiverIds) {
+        io.to(id).emit('transfer:rejected', { sessionId });
+        io.to(id).emit('receiver:rejected', { sessionId });
+      }
+    } else if (receiverId) {
+      io.to(receiverId).emit('transfer:rejected', { sessionId });
+      io.to(receiverId).emit('receiver:rejected', { sessionId });
     }
 
     if (typeof callback === 'function') {
@@ -190,6 +204,12 @@ export function registerSenderHandlers(io: Server, socket: Socket): void {
 
     sessionManager.cancelSession(sessionId);
 
+    // Notify all receivers in session
+    if (session.receivers) {
+      for (const rId of Object.keys(session.receivers)) {
+        io.to(rId).emit('transfer:cancelled', { sessionId });
+      }
+    }
     if (session.receiverSocketId) {
       io.to(session.receiverSocketId).emit('transfer:cancelled', { sessionId });
     }
@@ -206,17 +226,15 @@ export function registerSenderHandlers(io: Server, socket: Socket): void {
     const parsed = WebRTCSignalPayloadSchema.safeParse(rawPayload);
     if (!parsed.success) return;
 
-    const { sessionId, signal } = parsed.data;
+    const { sessionId, signal, targetReceiverId } = parsed.data;
     const session = sessionStore.getById(sessionId);
-    if (!session || !session.receiverSocketId) return;
+    if (!session) return;
 
-    // Transition state to CONNECTING if previously approved
-    if (session.state === 'RECEIVER_APPROVED') {
-      sessionManager.updateTransferState(sessionId, 'CONNECTING');
-    }
+    const targetSocket = targetReceiverId || session.receiverSocketId;
+    if (!targetSocket) return;
 
-    // Relay signal to receiver
-    io.to(session.receiverSocketId).emit('sender:webrtc-signal', {
+    // Relay signal to specific receiver
+    io.to(targetSocket).emit('sender:webrtc-signal', {
       sessionId,
       signal,
     });
@@ -241,49 +259,72 @@ export function registerSenderHandlers(io: Server, socket: Socket): void {
   });
 
   /**
-   * WebSocket Relay file transfer handlers (PairDrop-style fallback)
+   * WebSocket Relay file transfer handlers (supports multi-receiver targeting)
    */
-  socket.on('relay:start', (data: { sessionId: string; manifest: any }) => {
+  socket.on('relay:start', (data: { sessionId: string; targetReceiverId?: string; manifest: any }) => {
     if (!data?.sessionId) return;
     const session = sessionStore.getById(data.sessionId);
-    if (!session || !session.receiverSocketId) return;
-    sessionManager.updateTransferState(data.sessionId, 'TRANSFERRING');
-    io.to(session.receiverSocketId).emit('relay:start', data.manifest);
+    if (!session) return;
+
+    const targetSocket = data.targetReceiverId || session.receiverSocketId;
+    if (!targetSocket) return;
+
+    sessionManager.updateReceiverState(data.sessionId, targetSocket, 'TRANSFERRING');
+    io.to(targetSocket).emit('relay:start', data.manifest);
   });
 
-  socket.on('relay:file-start', (data: { sessionId: string; fileInfo: any }) => {
+  socket.on('relay:file-start', (data: { sessionId: string; targetReceiverId?: string; fileInfo: any }) => {
     if (!data?.sessionId) return;
     const session = sessionStore.getById(data.sessionId);
-    if (!session || !session.receiverSocketId) return;
-    io.to(session.receiverSocketId).emit('relay:file-start', data.fileInfo);
+    if (!session) return;
+
+    const targetSocket = data.targetReceiverId || session.receiverSocketId;
+    if (!targetSocket) return;
+
+    io.to(targetSocket).emit('relay:file-start', data.fileInfo);
   });
 
-  socket.on('relay:chunk', (data: { sessionId: string; chunk: any }, ack?: (res?: any) => void) => {
+  socket.on('relay:chunk', (data: { sessionId: string; targetReceiverId?: string; chunk: any }, ack?: (res?: any) => void) => {
     if (!data?.sessionId) {
       if (typeof ack === 'function') ack({ success: false, error: 'No sessionId' });
       return;
     }
     const session = sessionStore.getById(data.sessionId);
-    if (!session || !session.receiverSocketId) {
+    if (!session) {
+      if (typeof ack === 'function') ack({ success: false, error: 'Session not found' });
+      return;
+    }
+
+    const targetSocket = data.targetReceiverId || session.receiverSocketId;
+    if (!targetSocket) {
       if (typeof ack === 'function') ack({ success: false, error: 'Receiver not connected' });
       return;
     }
-    io.to(session.receiverSocketId).emit('relay:chunk', data.chunk);
+
+    io.to(targetSocket).emit('relay:chunk', data.chunk);
     if (typeof ack === 'function') ack({ success: true });
   });
 
-  socket.on('relay:file-end', (data: { sessionId: string; fileId: string }) => {
+  socket.on('relay:file-end', (data: { sessionId: string; targetReceiverId?: string; fileId: string }) => {
     if (!data?.sessionId) return;
     const session = sessionStore.getById(data.sessionId);
-    if (!session || !session.receiverSocketId) return;
-    io.to(session.receiverSocketId).emit('relay:file-end', { fileId: data.fileId });
+    if (!session) return;
+
+    const targetSocket = data.targetReceiverId || session.receiverSocketId;
+    if (!targetSocket) return;
+
+    io.to(targetSocket).emit('relay:file-end', { fileId: data.fileId });
   });
 
-  socket.on('relay:complete', (data: { sessionId: string }) => {
+  socket.on('relay:complete', (data: { sessionId: string; targetReceiverId?: string }) => {
     if (!data?.sessionId) return;
     const session = sessionStore.getById(data.sessionId);
-    if (!session || !session.receiverSocketId) return;
-    sessionManager.completeTransfer(data.sessionId);
-    io.to(session.receiverSocketId).emit('relay:complete');
+    if (!session) return;
+
+    const targetSocket = data.targetReceiverId || session.receiverSocketId;
+    if (!targetSocket) return;
+
+    sessionManager.completeReceiverTransfer(data.sessionId, targetSocket);
+    io.to(targetSocket).emit('relay:complete');
   });
 }

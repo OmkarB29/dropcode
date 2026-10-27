@@ -137,6 +137,11 @@ export const sessionRoutes: FastifyPluginAsync<{ io?: SocketIOServer }> = async 
     // Notify connected sockets via Socket.IO
     const io = getIO();
     if (io) {
+      if (session.receivers) {
+        for (const rId of Object.keys(session.receivers)) {
+          io.to(rId).emit('transfer:cancelled', { sessionId });
+        }
+      }
       if (session.receiverSocketId) {
         io.to(session.receiverSocketId).emit('transfer:cancelled', { sessionId });
       }
